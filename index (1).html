@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Family Reminders</title>
+<link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,600;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --cream: #FAF7F2;
+    --warm-white: #FFFEF9;
+    --ink: #1C1917;
+    --ink-light: #57534E;
+    --ink-faint: #A8A29E;
+    --accent: #C2410C;
+    --accent-light: #FEF3EC;
+    --accent-mid: #EA580C;
+    --green: #15803D;
+    --green-light: #F0FDF4;
+    --border: #E7E2DA;
+    --shadow: 0 1px 3px rgba(28,25,23,0.08);
+    --shadow-lg: 0 4px 24px rgba(28,25,23,0.10);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'DM Sans', sans-serif; background: var(--cream); color: var(--ink); min-height: 100vh; font-size: 15px; }
+
+  header { background: var(--warm-white); border-bottom: 1px solid var(--border); padding: 0 24px; display: flex; align-items: center; justify-content: space-between; height: 60px; position: sticky; top: 0; z-index: 100; }
+  .logo { font-family: 'Lora', serif; font-size: 20px; font-weight: 600; letter-spacing: -0.3px; color: var(--ink); }
+  .logo span { color: var(--accent); font-style: italic; }
+  .sync-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 4px 10px; border-radius: 20px; background: var(--cream); border: 1px solid var(--border); color: var(--ink-faint); }
+  .sync-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-faint); }
+  .sync-badge.live { background: var(--green-light); border-color: #BBF7D0; color: var(--green); }
+  .sync-badge.live .dot { background: var(--green); }
+  .sync-badge.error { background: #FEF2F2; border-color: #FECACA; color: #DC2626; }
+  .sync-badge.error .dot { background: #DC2626; }
+
+  .container { max-width: 860px; margin: 0 auto; padding: 32px 20px 80px; }
+  .tabs { display: flex; gap: 4px; background: var(--warm-white); border: 1px solid var(--border); border-radius: 10px; padding: 4px; margin-bottom: 28px; width: fit-content; }
+  .tab { padding: 7px 20px; border-radius: 7px; font-size: 14px; font-weight: 500; cursor: pointer; border: none; background: transparent; color: var(--ink-light); transition: all 0.15s; }
+  .tab.active { background: var(--accent); color: #fff; }
+  .tab:hover:not(.active) { background: var(--cream); }
+  .section { display: none; }
+  .section.active { display: block; }
+
+  .card { background: var(--warm-white); border: 1px solid var(--border); border-radius: 14px; padding: 24px; margin-bottom: 16px; box-shadow: var(--shadow); }
+  .card-title { font-family: 'Lora', serif; font-size: 17px; font-weight: 600; margin-bottom: 20px; color: var(--ink); }
+
+  .form-row { margin-bottom: 16px; }
+  .form-row label { display: block; font-size: 13px; font-weight: 500; color: var(--ink-light); margin-bottom: 6px; letter-spacing: 0.2px; }
+  input[type=text], input[type=email], input[type=date], input[type=password], textarea, select { width: 100%; padding: 10px 13px; border: 1px solid var(--border); border-radius: 8px; font-family: 'DM Sans', sans-serif; font-size: 14px; background: var(--cream); color: var(--ink); outline: none; transition: border-color 0.15s, box-shadow 0.15s; }
+  input:focus, textarea:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(194,65,12,0.08); background: var(--warm-white); }
+  textarea { resize: vertical; min-height: 72px; }
+  .form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media(max-width:520px) { .form-row-2 { grid-template-columns: 1fr; } }
+
+  .alert-options { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+  .alert-chip { display: flex; align-items: center; gap: 6px; padding: 7px 14px; border: 1px solid var(--border); border-radius: 20px; font-size: 13px; cursor: pointer; background: var(--cream); color: var(--ink-light); transition: all 0.15s; user-select: none; }
+  .alert-chip input { display: none; }
+  .alert-chip.checked { background: var(--accent-light); border-color: var(--accent); color: var(--accent); font-weight: 500; }
+  .alert-chip .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--border); flex-shrink: 0; }
+  .alert-chip.checked .dot { background: var(--accent); }
+
+  .btn { display: inline-flex; align-items: center; gap: 7px; padding: 10px 20px; border-radius: 8px; font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 500; cursor: pointer; border: none; transition: all 0.15s; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: var(--accent-mid); transform: translateY(-1px); }
+  .btn-ghost { background: transparent; border: 1px solid var(--border); color: var(--ink-light); }
+  .btn-ghost:hover { background: var(--cream); }
+  .btn-danger { background: transparent; border: 1px solid #FECACA; color: #DC2626; padding: 6px 12px; font-size: 13px; }
+  .btn-danger:hover { background: #FEF2F2; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important; }
+
+  .reminder-item { background: var(--warm-white); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; margin-bottom: 12px; display: flex; align-items: flex-start; gap: 16px; box-shadow: var(--shadow); transition: box-shadow 0.15s; }
+  .reminder-item:hover { box-shadow: var(--shadow-lg); }
+  .reminder-date-badge { background: var(--accent-light); color: var(--accent); border-radius: 8px; padding: 8px 12px; text-align: center; min-width: 52px; flex-shrink: 0; }
+  .reminder-date-badge .day { font-family: 'Lora', serif; font-size: 22px; font-weight: 600; line-height: 1; }
+  .reminder-date-badge .month { font-size: 11px; font-weight: 500; letter-spacing: 0.5px; text-transform: uppercase; margin-top: 2px; }
+  .reminder-body { flex: 1; min-width: 0; }
+  .reminder-title { font-family: 'Lora', serif; font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+  .reminder-desc { font-size: 13px; color: var(--ink-light); margin-bottom: 10px; line-height: 1.5; }
+  .reminder-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tag { font-size: 12px; padding: 3px 9px; border-radius: 12px; font-weight: 500; }
+  .tag-alert { background: #FEF9C3; color: #854D0E; }
+  .tag-member { background: var(--green-light); color: var(--green); }
+  .tag-overdue { background: #FEE2E2; color: #991B1B; }
+  .tag-today { background: var(--accent-light); color: var(--accent); }
+  .tag-soon { background: #FFF7ED; color: #9A3412; }
+  .tag-autodel { background: #FEF9C3; color: #854D0E; }
+  .reminder-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+
+  .member-item { display: flex; align-items: center; gap: 14px; padding: 14px 18px; background: var(--warm-white); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 10px; }
+  .avatar { width: 38px; height: 38px; border-radius: 50%; background: var(--accent-light); color: var(--accent); display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 14px; flex-shrink: 0; }
+  .member-info { flex: 1; }
+  .member-name { font-weight: 500; font-size: 15px; }
+  .member-email { font-size: 13px; color: var(--ink-light); }
+
+  .settings-row { display: flex; align-items: center; justify-content: space-between; padding: 14px 0; border-bottom: 1px solid var(--border); gap: 16px; }
+  .settings-row:last-child { border-bottom: none; }
+  .settings-label { font-size: 14px; font-weight: 500; }
+  .settings-sub { font-size: 12px; color: var(--ink-faint); margin-top: 2px; }
+  .settings-input-sm { width: 240px !important; }
+  @media(max-width:520px) { .settings-input-sm { width: 100% !important; } .settings-row { flex-direction: column; align-items: flex-start; } }
+
+  .toggle-row { display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: var(--cream); border: 1px solid var(--border); border-radius: 10px; cursor: pointer; user-select: none; transition: border-color 0.15s, background 0.15s; }
+  .toggle-row:hover { border-color: var(--ink-faint); }
+  .toggle-row.active { background: #FEF9C3; border-color: #FDE047; }
+  .toggle-switch { width: 36px; height: 20px; background: var(--border); border-radius: 10px; position: relative; flex-shrink: 0; transition: background 0.2s; }
+  .toggle-switch::after { content: ''; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: transform 0.2s; }
+  .toggle-row.active .toggle-switch { background: #CA8A04; }
+  .toggle-row.active .toggle-switch::after { transform: translateX(16px); }
+  .toggle-label { font-size: 14px; font-weight: 500; color: var(--ink-light); flex: 1; }
+  .toggle-row.active .toggle-label { color: #854D0E; }
+  .toggle-sub { font-size: 12px; color: var(--ink-faint); margin-top: 1px; }
+  .toggle-row.active .toggle-sub { color: #A16207; }
+
+  .stats-bar { display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
+  .stat-chip { background: var(--warm-white); border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; flex: 1; min-width: 100px; }
+  .stat-num { font-family: 'Lora', serif; font-size: 24px; font-weight: 600; color: var(--accent); line-height: 1; }
+  .stat-label { font-size: 12px; color: var(--ink-faint); margin-top: 3px; }
+
+  .api-status { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; padding: 5px 12px; border-radius: 20px; background: var(--cream); border: 1px solid var(--border); color: var(--ink-light); margin-top: 10px; }
+  .api-status .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-faint); }
+  .api-status.configured .dot { background: var(--green); }
+  .api-status.configured { color: var(--green); background: var(--green-light); border-color: #BBF7D0; }
+
+  .recipient-options { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+  .recipient-chip { display: flex; align-items: center; gap: 6px; padding: 6px 13px; border: 1px solid var(--border); border-radius: 20px; font-size: 13px; cursor: pointer; background: var(--cream); color: var(--ink-light); transition: all 0.15s; user-select: none; }
+  .recipient-chip input { display: none; }
+  .recipient-chip.checked { background: var(--green-light); border-color: var(--green); color: var(--green); font-weight: 500; }
+
+  .empty { text-align: center; padding: 60px 20px; color: var(--ink-faint); }
+  .empty-icon { font-size: 40px; margin-bottom: 12px; opacity: 0.5; }
+  .empty h3 { font-family: 'Lora', serif; font-size: 18px; color: var(--ink-light); margin-bottom: 6px; }
+  .empty p { font-size: 14px; }
+
+  #toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%) translateY(80px); background: var(--ink); color: #fff; padding: 12px 22px; border-radius: 24px; font-size: 14px; font-weight: 500; z-index: 999; transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1); white-space: nowrap; box-shadow: var(--shadow-lg); }
+  #toast.show { transform: translateX(-50%) translateY(0); }
+  #toast.success { background: #15803D; }
+  #toast.error { background: #DC2626; }
+
+  .modal-bg { display: none; position: fixed; inset: 0; background: rgba(28,25,23,0.45); z-index: 200; align-items: center; justify-content: center; padding: 20px; }
+  .modal-bg.open { display: flex; }
+  .modal { background: var(--warm-white); border-radius: 16px; padding: 28px; width: 100%; max-width: 480px; box-shadow: var(--shadow-lg); max-height: 90vh; overflow-y: auto; }
+  .modal-title { font-family: 'Lora', serif; font-size: 20px; font-weight: 600; margin-bottom: 20px; }
+  .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+
+  /* Setup wizard */
+  .setup-screen { max-width: 560px; margin: 60px auto; }
+  .setup-step { display: flex; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--border); }
+  .setup-step:last-child { border-bottom: none; }
+  .step-num { width: 26px; height: 26px; border-radius: 50%; background: var(--accent-light); color: var(--accent); font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px; }
+  .step-content { flex: 1; }
+  .step-title { font-weight: 500; font-size: 14px; margin-bottom: 3px; }
+  .step-desc { font-size: 13px; color: var(--ink-light); line-height: 1.6; }
+  .step-desc code { background: var(--cream); border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; font-family: monospace; font-size: 12px; color: var(--accent); }
+  .loading-screen { display: flex; align-items: center; justify-content: center; min-height: 300px; flex-direction: column; gap: 12px; color: var(--ink-faint); }
+  .spinner { width: 28px; height: 28px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">family <span>reminders</span></div>
+  <div style="display:flex;align-items:center;gap:12px">
+    <div style="font-size:13px;color:var(--ink-faint)" id="today-date"></div>
+    <div class="sync-badge" id="sync-badge"><span class="dot"></span> <span id="sync-label">Connecting…</span></div>
+  </div>
+</header>
+
+<div class="container" id="main-container">
+  <div class="loading-screen">
+    <div class="spinner"></div>
+    <div style="font-size:14px">Loading…</div>
+  </div>
+</div>
+
+<!-- Modal: Edit reminder -->
+<div class="modal-bg" id="edit-modal">
+  <div class="modal">
+    <div class="modal-title">Edit reminder</div>
+    <div class="form-row"><label>Title</label><input type="text" id="edit-title"></div>
+    <div class="form-row"><label>Description</label><textarea id="edit-desc"></textarea></div>
+    <div class="form-row"><label>Due date</label><input type="date" id="edit-date"></div>
+    <div class="form-row">
+      <label>After reminder is sent</label>
+      <div class="toggle-row" id="edit-autodel-toggle" onclick="toggleAutodel(this)">
+        <div class="toggle-switch"></div>
+        <div><div class="toggle-label">Delete automatically</div><div class="toggle-sub">Good for one-time events.</div></div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" id="edit-save-btn" onclick="saveEdit()">Save changes</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ─── CONFIG — fill these in ─────────────────────────────────
+// You can also set them in Settings tab after first load
+const SUPABASE_URL    = localStorage.getItem('sb_url')    || '';
+const SUPABASE_ANON   = localStorage.getItem('sb_anon')   || '';
+const MAILJET_API     = localStorage.getItem('mj_api')    || '';
+const MAILJET_SECRET  = localStorage.getItem('mj_secret') || '';
+const FROM_EMAIL      = localStorage.getItem('mj_from')   || '';
+const FROM_NAME       = localStorage.getItem('mj_name')   || 'Family Reminders';
+// ────────────────────────────────────────────────────────────
+
+let sb = null;
+let reminders = [];
+let members   = [];
+let editId    = null;
+let channel   = null;
+
+document.getElementById('today-date').textContent =
+  new Date().toLocaleDateString('en-IN', {weekday:'short', day:'numeric', month:'long', year:'numeric'});
+
+async function init() {
+  const url  = localStorage.getItem('sb_url')  || '';
+  const anon = localStorage.getItem('sb_anon') || '';
+
+  if (!url || !anon) {
+    renderSetup();
+    return;
+  }
+
+  try {
+    sb = supabase.createClient(url, anon);
+    await loadData();
+    renderApp();
+    subscribeRealtime();
+    setSyncStatus('live');
+    checkAndSendDueReminders();
+  } catch(e) {
+    setSyncStatus('error');
+    renderSetup(true);
+  }
+}
+
+// ─── Setup screen ─────────────────────────────────────────
+function renderSetup(isError = false) {
+  setSyncStatus('error');
+  document.getElementById('main-container').innerHTML = `
+    <div class="setup-screen">
+      <div class="card">
+        <div class="card-title">Connect to Supabase</div>
+        ${isError ? `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:10px 14px;margin-bottom:20px;font-size:13px;color:#DC2626">Could not connect — check your URL and key below.</div>` : ''}
+        <p style="font-size:14px;color:var(--ink-light);line-height:1.7;margin-bottom:20px">
+          Supabase stores your reminders and family members in the cloud so everyone sees the same data on any device.
+        </p>
+
+        <div class="form-row">
+          <label>Supabase project URL</label>
+          <input type="text" id="setup-url" placeholder="https://xxxxxxxxxxxx.supabase.co" value="${localStorage.getItem('sb_url')||''}">
+        </div>
+        <div class="form-row">
+          <label>Supabase anon (public) key</label>
+          <input type="text" id="setup-anon" placeholder="eyJhbGci…" value="${localStorage.getItem('sb_anon')||''}">
+        </div>
+
+        <button class="btn btn-primary" onclick="saveSupabaseConfig()" style="margin-bottom:24px">Connect & continue</button>
+
+        <div style="border-top:1px solid var(--border);padding-top:20px">
+          <div style="font-size:13px;font-weight:500;color:var(--ink);margin-bottom:14px">How to find these — 3 steps in Supabase:</div>
+          <div class="setup-step">
+            <div class="step-num">1</div>
+            <div class="step-content">
+              <div class="step-title">Open your Supabase project</div>
+              <div class="step-desc">Go to <a href="https://supabase.com/dashboard" target="_blank" style="color:var(--accent)">supabase.com/dashboard</a> → click your project</div>
+            </div>
+          </div>
+          <div class="setup-step">
+            <div class="step-num">2</div>
+            <div class="step-content">
+              <div class="step-title">Get your URL and anon key</div>
+              <div class="step-desc">Go to <strong>Settings → API</strong>. Copy the <strong>Project URL</strong> and the <strong>anon public</strong> key from the "Project API keys" section.</div>
+            </div>
+          </div>
+          <div class="setup-step">
+            <div class="step-num">3</div>
+            <div class="step-content">
+              <div class="step-title">Create the two tables</div>
+              <div class="step-desc">Go to <strong>SQL Editor</strong> in Supabase and run this once:</div>
+              <div style="margin-top:10px;background:var(--cream);border:1px solid var(--border);border-radius:8px;padding:14px;font-family:monospace;font-size:12px;color:var(--ink-light);line-height:1.8;white-space:pre-wrap">create table members (
+  id uuid default gen_random_uuid() primary key,
+  name text not null,
+  email text not null,
+  created_at timestamptz default now()
+);
+
+create table reminders (
+  id uuid default gen_random_uuid() primary key,
+  title text not null,
+  description text,
+  due_date date not null,
+  category text default 'other',
+  alerts integer[] default '{}',
+  recipients text default 'everyone',
+  auto_delete boolean default false,
+  sent_alerts text[] default '{}',
+  created_at timestamptz default now()
+);
+
+alter table members enable row level security;
+alter table reminders enable row level security;
+create policy "allow all" on members for all using (true) with check (true);
+create policy "allow all" on reminders for all using (true) with check (true);</div>
+              <button class="btn btn-ghost" onclick="copySQL()" style="margin-top:8px;font-size:12px;padding:6px 12px">Copy SQL</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function copySQL() {
+  const sql = `create table members (
+  id uuid default gen_random_uuid() primary key,
+  name text not null,
+  email text not null,
+  created_at timestamptz default now()
+);
+
+create table reminders (
+  id uuid default gen_random_uuid() primary key,
+  title text not null,
+  description text,
+  due_date date not null,
+  category text default 'other',
+  alerts integer[] default '{}',
+  recipients text default 'everyone',
+  auto_delete boolean default false,
+  sent_alerts text[] default '{}',
+  created_at timestamptz default now()
+);
+
+alter table members enable row level security;
+alter table reminders enable row level security;
+create policy "allow all" on members for all using (true) with check (true);
+create policy "allow all" on reminders for all using (true) with check (true);`;
+  navigator.clipboard.writeText(sql).then(() => showToast('SQL copied!', 'success'));
+}
+
+async function saveSupabaseConfig() {
+  const url  = document.getElementById('setup-url').value.trim();
+  const anon = document.getElementById('setup-anon').value.trim();
+  if (!url || !anon) return showToast('Please enter both URL and key', 'error');
+  localStorage.setItem('sb_url',  url);
+  localStorage.setItem('sb_anon', anon);
+  document.getElementById('main-container').innerHTML = `<div class="loading-screen"><div class="spinner"></div><div style="font-size:14px">Connecting…</div></div>`;
+  await init();
+}
+
+// ─── Data loading ──────────────────────────────────────────
+async function loadData() {
+  const [{ data: r, error: re }, { data: m, error: me }] = await Promise.all([
+    sb.from('reminders').select('*').order('due_date'),
+    sb.from('members').select('*').order('created_at')
+  ]);
+  if (re) throw re;
+  if (me) throw me;
+  reminders = r || [];
+  members   = m || [];
+}
+
+// ─── Realtime subscription ─────────────────────────────────
+function subscribeRealtime() {
+  if (channel) sb.removeChannel(channel);
+  channel = sb.channel('db-changes')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'reminders' }, async () => {
+      const { data } = await sb.from('reminders').select('*').order('due_date');
+      reminders = data || [];
+      renderReminders();
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'members' }, async () => {
+      const { data } = await sb.from('members').select('*').order('created_at');
+      members = data || [];
+      renderMembers();
+      buildRecipientChips();
+    })
+    .subscribe(status => {
+      setSyncStatus(status === 'SUBSCRIBED' ? 'live' : 'error');
+    });
+}
+
+function setSyncStatus(state) {
+  const badge = document.getElementById('sync-badge');
+  const label = document.getElementById('sync-label');
+  if (!badge) return;
+  badge.className = 'sync-badge' + (state === 'live' ? ' live' : state === 'error' ? ' error' : '');
+  label.textContent = state === 'live' ? 'Live sync' : state === 'error' ? 'Offline' : 'Connecting…';
+}
+
+// ─── Render app shell ──────────────────────────────────────
+function renderApp() {
+  document.getElementById('main-container').innerHTML = `
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('reminders')">Reminders</button>
+      <button class="tab" onclick="switchTab('add')">+ Add</button>
+      <button class="tab" onclick="switchTab('members')">Family</button>
+      <button class="tab" onclick="switchTab('settings')">Settings</button>
+    </div>
+
+    <div id="tab-reminders" class="section active">
+      <div class="stats-bar" id="stats-bar"></div>
+      <div id="reminders-list"></div>
+    </div>
+
+    <div id="tab-add" class="section">
+      <div class="card">
+        <div class="card-title">New reminder</div>
+        <div class="form-row"><label>What is this reminder for?</label><input type="text" id="r-title" placeholder="e.g. School fee payment, Insurance renewal…"></div>
+        <div class="form-row"><label>Details (optional)</label><textarea id="r-desc" placeholder="Any extra notes…"></textarea></div>
+        <div class="form-row-2">
+          <div class="form-row" style="margin-bottom:0"><label>Due date</label><input type="date" id="r-date"></div>
+          <div class="form-row" style="margin-bottom:0"><label>Category</label>
+            <select id="r-category">
+              <option value="bill">Bill / Payment</option>
+              <option value="school">School</option>
+              <option value="health">Health / Medical</option>
+              <option value="insurance">Insurance</option>
+              <option value="government">Government / Official</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row" style="margin-top:16px">
+          <label>Send reminder alerts</label>
+          <div class="alert-options" id="alert-options">
+            <label class="alert-chip" onclick="toggleChip(this)"><input type="checkbox" value="7"> <span class="dot"></span> 1 week before</label>
+            <label class="alert-chip checked" onclick="toggleChip(this)"><input type="checkbox" value="3" checked> <span class="dot"></span> 3 days before</label>
+            <label class="alert-chip checked" onclick="toggleChip(this)"><input type="checkbox" value="1" checked> <span class="dot"></span> 1 day before</label>
+            <label class="alert-chip checked" onclick="toggleChip(this)"><input type="checkbox" value="0" checked> <span class="dot"></span> On the day</label>
+          </div>
+        </div>
+        <div class="form-row">
+          <label>Notify</label>
+          <div class="recipient-options" id="recipient-options-add">
+            <label class="recipient-chip checked" id="chip-everyone" onclick="toggleEveryone(this)"><input type="checkbox" value="everyone" checked> Everyone</label>
+          </div>
+          <div style="font-size:12px;color:var(--ink-faint);margin-top:8px">Add family members in the Family tab first</div>
+        </div>
+        <div class="form-row">
+          <label>After last reminder is sent</label>
+          <div class="toggle-row" id="autodel-toggle" onclick="toggleAutodel(this)">
+            <div class="toggle-switch"></div>
+            <div><div class="toggle-label">Delete this reminder automatically</div><div class="toggle-sub">Good for one-time events. Leave off for annual bills.</div></div>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:8px">
+          <button class="btn btn-primary" id="add-btn" onclick="addReminder()">Save reminder</button>
+          <button class="btn btn-ghost" onclick="clearForm()">Clear</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="tab-members" class="section">
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-title">Add family member</div>
+        <div class="form-row-2">
+          <div class="form-row" style="margin-bottom:0"><label>Name</label><input type="text" id="m-name" placeholder="e.g. Mum"></div>
+          <div class="form-row" style="margin-bottom:0"><label>Email address</label><input type="email" id="m-email" placeholder="mum@email.com"></div>
+        </div>
+        <button class="btn btn-primary" style="margin-top:16px" id="member-btn" onclick="addMember()">Add member</button>
+      </div>
+      <div id="members-list"></div>
+    </div>
+
+    <div id="tab-settings" class="section">
+      <div class="card">
+        <div class="card-title">Supabase connection</div>
+        <div class="settings-row">
+          <div><div class="settings-label">Project URL</div><div class="settings-sub">Your Supabase project URL</div></div>
+          <input type="text" class="settings-input-sm" id="s-sb-url" value="${localStorage.getItem('sb_url')||''}" placeholder="https://xxx.supabase.co" oninput="saveSupabaseSettings()">
+        </div>
+        <div class="settings-row">
+          <div><div class="settings-label">Anon key</div><div class="settings-sub">Public anon key from Settings → API</div></div>
+          <input type="password" class="settings-input-sm" id="s-sb-anon" value="${localStorage.getItem('sb_anon')||''}" placeholder="eyJhbGci…" oninput="saveSupabaseSettings()">
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Email settings (Mailjet)</div>
+        <div class="settings-row">
+          <div><div class="settings-label">API key</div><div class="settings-sub">From mailjet.com → Account → API Keys</div></div>
+          <input type="text" class="settings-input-sm" id="s-mj-api" value="${localStorage.getItem('mj_api')||''}" placeholder="Public API key" oninput="saveMailjetSettings()">
+        </div>
+        <div class="settings-row">
+          <div><div class="settings-label">Secret key</div><div class="settings-sub">Alongside your API key</div></div>
+          <input type="password" class="settings-input-sm" id="s-mj-secret" value="${localStorage.getItem('mj_secret')||''}" placeholder="Secret key" oninput="saveMailjetSettings()">
+        </div>
+        <div class="settings-row">
+          <div><div class="settings-label">Sender email</div><div class="settings-sub">Must be verified in Mailjet</div></div>
+          <input type="email" class="settings-input-sm" id="s-mj-from" value="${localStorage.getItem('mj_from')||''}" placeholder="you@yourdomain.com" oninput="saveMailjetSettings()">
+        </div>
+        <div class="settings-row">
+          <div><div class="settings-label">Sender name</div><div class="settings-sub">Shown as "From" in inbox</div></div>
+          <input type="text" class="settings-input-sm" id="s-mj-name" value="${localStorage.getItem('mj_name')||'Family Reminders'}" placeholder="Family Reminders" oninput="saveMailjetSettings()">
+        </div>
+        <div style="margin-top:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <button class="btn btn-primary" onclick="sendTestEmail()">Send test email</button>
+          <div class="api-status ${localStorage.getItem('mj_api') ? 'configured' : ''}" id="api-status">
+            <span class="dot"></span> ${localStorage.getItem('mj_api') ? 'Mailjet configured' : 'Not configured'}
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Deploying to Vercel</div>
+        <div style="font-size:14px;color:var(--ink-light);line-height:1.8">
+          <strong style="color:var(--ink)">1. Rename this file to <code style="background:var(--cream);border:1px solid var(--border);border-radius:4px;padding:1px 6px;font-size:13px">index.html</code></strong><br>
+          Upload it to a GitHub repo called <code style="background:var(--cream);border:1px solid var(--border);border-radius:4px;padding:1px 6px;font-size:13px">family-reminders</code><br><br>
+          <strong style="color:var(--ink)">2. Connect Vercel</strong><br>
+          vercel.com → New Project → Import your GitHub repo → Deploy<br><br>
+          <strong style="color:var(--ink)">3. Your URL</strong><br>
+          Vercel gives you <code style="background:var(--cream);border:1px solid var(--border);border-radius:4px;padding:1px 6px;font-size:13px">family-reminders.vercel.app</code> — share with family<br><br>
+          <strong style="color:var(--ink)">4. Custom domain (optional)</strong><br>
+          Vercel → your project → Settings → Domains → add your own domain
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Automatic daily emails (Vercel cron)</div>
+        <p style="font-size:14px;color:var(--ink-light);line-height:1.7;margin-bottom:16px">
+          To send emails automatically without anyone opening the app, add a <code style="background:var(--cream);border:1px solid var(--border);border-radius:4px;padding:1px 6px;font-size:13px">vercel.json</code> file alongside your <code style="background:var(--cream);border:1px solid var(--border);border-radius:4px;padding:1px 6px;font-size:13px">index.html</code> in GitHub:
+        </p>
+        <div style="background:var(--cream);border:1px solid var(--border);border-radius:8px;padding:14px;font-family:monospace;font-size:12px;color:var(--ink-light);line-height:1.8;white-space:pre-wrap">{
+  "crons": [{
+    "path": "/api/send-reminders",
+    "schedule": "0 7 * * *"
+  }]
+}</div>
+        <p style="font-size:13px;color:var(--ink-faint);margin-top:10px">This runs every day at 7am UTC. Ask me to build the <code style="font-size:12px">/api/send-reminders</code> serverless function when you're ready.</p>
+      </div>
+    </div>`;
+
+  renderReminders();
+  renderMembers();
+  buildRecipientChips();
+}
+
+// ─── Tab switching ─────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach((t,i) => {
+    t.classList.toggle('active', ['reminders','add','members','settings'][i] === name);
+  });
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  if (name === 'add') buildRecipientChips();
+}
+
+// ─── Render reminders ──────────────────────────────────────
+function renderReminders() {
+  const list = document.getElementById('reminders-list');
+  const statsEl = document.getElementById('stats-bar');
+  if (!list) return;
+
+  const now = new Date(); now.setHours(0,0,0,0);
+  const upcoming = reminders.filter(r => new Date(r.due_date) >= now).length;
+  const overdue  = reminders.filter(r => new Date(r.due_date) < now).length;
+  const thisWeek = reminders.filter(r => {
+    const d = new Date(r.due_date); d.setHours(0,0,0,0);
+    const diff = Math.round((d - now) / 86400000);
+    return diff >= 0 && diff <= 7;
+  }).length;
+
+  if (statsEl) statsEl.innerHTML = reminders.length ? `
+    <div class="stat-chip"><div class="stat-num">${reminders.length}</div><div class="stat-label">Total</div></div>
+    <div class="stat-chip"><div class="stat-num" style="color:var(--green)">${upcoming}</div><div class="stat-label">Upcoming</div></div>
+    <div class="stat-chip"><div class="stat-num" style="color:#F59E0B">${thisWeek}</div><div class="stat-label">This week</div></div>
+    <div class="stat-chip"><div class="stat-num" style="color:#DC2626">${overdue}</div><div class="stat-label">Overdue</div></div>` : '';
+
+  if (!reminders.length) {
+    list.innerHTML = `<div class="empty"><div class="empty-icon">📅</div><h3>No reminders yet</h3><p>Add your first family reminder above</p></div>`;
+    return;
+  }
+
+  list.innerHTML = [...reminders].sort((a,b) => new Date(a.due_date) - new Date(b.due_date)).map(r => {
+    const d = new Date(r.due_date); d.setHours(0,0,0,0);
+    const diff = Math.round((d - now) / 86400000);
+    const day  = d.getDate();
+    const mon  = d.toLocaleString('en-IN', {month:'short'}).toUpperCase();
+
+    let statusTag = '';
+    if (diff < 0)        statusTag = `<span class="tag tag-overdue">${Math.abs(diff)}d overdue</span>`;
+    else if (diff === 0) statusTag = `<span class="tag tag-today">Today!</span>`;
+    else if (diff <= 3)  statusTag = `<span class="tag tag-soon">${diff}d left</span>`;
+
+    const alertTags = (r.alerts||[]).map(a =>
+      `<span class="tag tag-alert">${a==0?'Day-of':a+'d before'}</span>`).join('');
+
+    const recLabel = r.recipients === 'everyone' ? 'Everyone' :
+      (() => {
+        try {
+          const ids = JSON.parse(r.recipients);
+          return ids.map(id => { const m = members.find(x => x.id === id); return m ? m.name : ''; }).filter(Boolean).join(', ');
+        } catch { return r.recipients; }
+      })();
+
+    return `<div class="reminder-item">
+      <div class="reminder-date-badge"><div class="day">${day}</div><div class="month">${mon}</div></div>
+      <div class="reminder-body">
+        <div class="reminder-title">${esc(r.title)}</div>
+        ${r.description ? `<div class="reminder-desc">${esc(r.description)}</div>` : ''}
+        <div class="reminder-tags">
+          ${statusTag}${alertTags}
+          ${recLabel ? `<span class="tag tag-member">${esc(recLabel)}</span>` : ''}
+          ${r.auto_delete ? `<span class="tag tag-autodel">auto-delete after</span>` : ''}
+        </div>
+      </div>
+      <div class="reminder-actions">
+        <button class="btn btn-ghost" style="padding:6px 12px;font-size:13px" onclick="openEdit('${r.id}')">Edit</button>
+        <button class="btn btn-danger" onclick="deleteReminder('${r.id}')">Delete</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ─── Render members ────────────────────────────────────────
+function renderMembers() {
+  const list = document.getElementById('members-list');
+  if (!list) return;
+  if (!members.length) {
+    list.innerHTML = `<div class="empty"><div class="empty-icon">👨‍👩‍👧‍👦</div><h3>No members yet</h3><p>Add family members to notify them</p></div>`;
+    return;
+  }
+  list.innerHTML = members.map(m => `
+    <div class="member-item">
+      <div class="avatar">${initials(m.name)}</div>
+      <div class="member-info"><div class="member-name">${esc(m.name)}</div><div class="member-email">${esc(m.email)}</div></div>
+      <button class="btn btn-danger" onclick="deleteMember('${m.id}')">Remove</button>
+    </div>`).join('');
+}
+
+function buildRecipientChips() {
+  const c = document.getElementById('recipient-options-add');
+  if (!c) return;
+  c.innerHTML = `
+    <label class="recipient-chip checked" id="chip-everyone" onclick="toggleEveryone(this)">
+      <input type="checkbox" value="everyone" checked> Everyone
+    </label>
+    ${members.map(m => `
+      <label class="recipient-chip" onclick="toggleRecipient(this)">
+        <input type="checkbox" value="${m.id}"> ${esc(m.name)}
+      </label>`).join('')}`;
+}
+
+// ─── Add reminder ──────────────────────────────────────────
+async function addReminder() {
+  const title = document.getElementById('r-title').value.trim();
+  const date  = document.getElementById('r-date').value;
+  if (!title) return showToast('Please enter a title', 'error');
+  if (!date)  return showToast('Please pick a due date', 'error');
+
+  const alerts = [...document.querySelectorAll('#alert-options .alert-chip.checked input')]
+    .map(i => parseInt(i.value));
+
+  const evChip = document.querySelector('#recipient-options-add #chip-everyone');
+  let recipients;
+  if (evChip && evChip.classList.contains('checked')) {
+    recipients = 'everyone';
+  } else {
+    const ids = [...document.querySelectorAll('#recipient-options-add .recipient-chip.checked:not(#chip-everyone) input')]
+      .map(i => i.value);
+    recipients = JSON.stringify(ids);
+  }
+
+  const btn = document.getElementById('add-btn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+
+  const { error } = await sb.from('reminders').insert({
+    title,
+    description: document.getElementById('r-desc').value.trim(),
+    due_date: date,
+    category: document.getElementById('r-category').value,
+    alerts,
+    recipients,
+    auto_delete: document.getElementById('autodel-toggle').classList.contains('active'),
+    sent_alerts: []
+  });
+
+  btn.disabled = false; btn.textContent = 'Save reminder';
+  if (error) return showToast('Error saving — check Supabase connection', 'error');
+
+  clearForm();
+  showToast('Reminder saved!', 'success');
+  switchTab('reminders');
+}
+
+function clearForm() {
+  ['r-title','r-desc','r-date'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+  document.querySelectorAll('#alert-options .alert-chip').forEach(c => {
+    const v = c.querySelector('input').value;
+    const def = ['3','1','0'].includes(v);
+    c.classList.toggle('checked', def);
+    c.querySelector('input').checked = def;
+  });
+  const tog = document.getElementById('autodel-toggle');
+  if (tog) tog.classList.remove('active');
+}
+
+// ─── Add member ────────────────────────────────────────────
+async function addMember() {
+  const name  = document.getElementById('m-name').value.trim();
+  const email = document.getElementById('m-email').value.trim();
+  if (!name)  return showToast('Please enter a name', 'error');
+  if (!email || !email.includes('@')) return showToast('Please enter a valid email', 'error');
+
+  const btn = document.getElementById('member-btn');
+  btn.disabled = true; btn.textContent = 'Adding…';
+
+  const { error } = await sb.from('members').insert({ name, email });
+  btn.disabled = false; btn.textContent = 'Add member';
+  if (error) return showToast('Error adding member', 'error');
+
+  document.getElementById('m-name').value = '';
+  document.getElementById('m-email').value = '';
+  showToast(`${name} added!`, 'success');
+}
+
+async function deleteMember(id) {
+  const m = members.find(x => x.id === id);
+  if (!confirm(`Remove ${m?.name || 'this member'}?`)) return;
+  const { error } = await sb.from('members').delete().eq('id', id);
+  if (error) showToast('Error removing member', 'error');
+}
+
+async function deleteReminder(id) {
+  if (!confirm('Delete this reminder?')) return;
+  const { error } = await sb.from('reminders').delete().eq('id', id);
+  if (error) showToast('Error deleting reminder', 'error');
+}
+
+// ─── Edit reminder ─────────────────────────────────────────
+function openEdit(id) {
+  editId = id;
+  const r = reminders.find(x => x.id === id);
+  if (!r) return;
+  document.getElementById('edit-title').value = r.title;
+  document.getElementById('edit-desc').value  = r.description || '';
+  document.getElementById('edit-date').value  = r.due_date;
+  document.getElementById('edit-autodel-toggle').classList.toggle('active', !!r.auto_delete);
+  document.getElementById('edit-modal').classList.add('open');
+}
+function closeModal() {
+  document.getElementById('edit-modal').classList.remove('open');
+  editId = null;
+}
+async function saveEdit() {
+  const title = document.getElementById('edit-title').value.trim();
+  const date  = document.getElementById('edit-date').value;
+  if (!title || !date) return showToast('Title and date required', 'error');
+
+  const btn = document.getElementById('edit-save-btn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+
+  const { error } = await sb.from('reminders').update({
+    title,
+    description: document.getElementById('edit-desc').value.trim(),
+    due_date: date,
+    auto_delete: document.getElementById('edit-autodel-toggle').classList.contains('active'),
+    sent_alerts: []
+  }).eq('id', editId);
+
+  btn.disabled = false; btn.textContent = 'Save changes';
+  if (error) return showToast('Error updating', 'error');
+  closeModal();
+  showToast('Reminder updated!', 'success');
+}
+
+// ─── Chip toggles ──────────────────────────────────────────
+function toggleChip(el) { el.classList.toggle('checked'); el.querySelector('input').checked = el.classList.contains('checked'); }
+function toggleAutodel(el) { el.classList.toggle('active'); }
+function toggleEveryone(el) {
+  const willCheck = !el.classList.contains('checked');
+  el.classList.toggle('checked', willCheck);
+  if (willCheck) {
+    document.querySelectorAll('#recipient-options-add .recipient-chip:not(#chip-everyone)')
+      .forEach(c => { c.classList.remove('checked'); c.querySelector('input').checked = false; });
+  }
+}
+function toggleRecipient(el) {
+  el.classList.toggle('checked');
+  if (el.classList.contains('checked')) {
+    const ev = document.getElementById('chip-everyone');
+    if (ev) { ev.classList.remove('checked'); ev.querySelector('input').checked = false; }
+  }
+}
+
+// ─── Settings ──────────────────────────────────────────────
+function saveSupabaseSettings() {
+  localStorage.setItem('sb_url',  document.getElementById('s-sb-url').value.trim());
+  localStorage.setItem('sb_anon', document.getElementById('s-sb-anon').value.trim());
+}
+function saveMailjetSettings() {
+  localStorage.setItem('mj_api',    document.getElementById('s-mj-api').value.trim());
+  localStorage.setItem('mj_secret', document.getElementById('s-mj-secret').value.trim());
+  localStorage.setItem('mj_from',   document.getElementById('s-mj-from').value.trim());
+  localStorage.setItem('mj_name',   document.getElementById('s-mj-name').value.trim());
+  const ok = localStorage.getItem('mj_api');
+  const el = document.getElementById('api-status');
+  if (el) { el.className = 'api-status' + (ok ? ' configured' : ''); el.innerHTML = `<span class="dot"></span> ${ok ? 'Mailjet configured' : 'Not configured'}`; }
+}
+
+// ─── Email (Mailjet) ───────────────────────────────────────
+async function sendEmail(toEmail, toName, subject, html) {
+  try {
+    const res = await fetch('/api/send-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to: toEmail, toName, subject, html })
+    });
+    const data = await res.json();
+    return data.success === true;
+  } catch { return false; }
+}
+
+function buildEmailHtml(r, daysLeft) {
+  const urgency = daysLeft === 0 ? 'Today!' : daysLeft === 1 ? 'Tomorrow' : `In ${daysLeft} days`;
+  const color   = daysLeft === 0 ? '#C2410C' : daysLeft <= 3 ? '#EA580C' : '#15803D';
+  return `<div style="font-family:'DM Sans',Arial,sans-serif;max-width:480px;margin:0 auto;background:#FFFEF9;border:1px solid #E7E2DA;border-radius:12px;overflow:hidden">
+    <div style="background:#1C1917;padding:20px 28px"><span style="font-family:Georgia,serif;font-size:18px;color:#FAF7F2">family <em style="color:#EA580C">reminders</em></span></div>
+    <div style="padding:28px">
+      <div style="background:${color}18;border-left:3px solid ${color};border-radius:4px;padding:10px 14px;margin-bottom:20px"><span style="color:${color};font-weight:600;font-size:15px">${urgency}</span></div>
+      <h2 style="font-family:Georgia,serif;font-size:22px;color:#1C1917;margin:0 0 8px">${esc(r.title)}</h2>
+      ${r.description ? `<p style="color:#57534E;font-size:14px;line-height:1.6;margin:0 0 16px">${esc(r.description)}</p>` : ''}
+      <div style="background:#FAF7F2;border-radius:8px;padding:12px 16px;font-size:14px;color:#57534E"><strong style="color:#1C1917">Due date:</strong> ${new Date(r.due_date).toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</div>
+    </div>
+    <div style="padding:16px 28px;border-top:1px solid #E7E2DA;font-size:12px;color:#A8A29E;text-align:center">Sent by Family Reminders</div>
+  </div>`;
+}
+
+async function checkAndSendDueReminders() {
+  if (!localStorage.getItem('mj_from')) return;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const toDelete = [];
+
+  for (const r of reminders) {
+    const due = new Date(r.due_date); due.setHours(0,0,0,0);
+    const daysLeft = Math.round((due - today) / 86400000);
+
+    for (const offset of (r.alerts || [])) {
+      const alertKey = `${r.id}_${offset}`;
+      if ((r.sent_alerts || []).includes(alertKey)) continue;
+      if (daysLeft !== offset) continue;
+
+      let targets = r.recipients === 'everyone' ? members : (() => {
+        try { const ids = JSON.parse(r.recipients); return members.filter(m => ids.includes(m.id)); } catch { return []; }
+      })();
+
+      const subj = daysLeft === 0
+        ? `Reminder: ${r.title} is due today`
+        : `Reminder: ${r.title} — ${daysLeft} day${daysLeft>1?'s':''} left`;
+
+      for (const m of targets) await sendEmail(m.email, m.name, subj, buildEmailHtml(r, daysLeft));
+
+      const newSentAlerts = [...(r.sent_alerts || []), alertKey];
+      await sb.from('reminders').update({ sent_alerts: newSentAlerts }).eq('id', r.id);
+      r.sent_alerts = newSentAlerts;
+    }
+
+    if (r.auto_delete) {
+      const allSent = (r.alerts||[]).length > 0 &&
+        (r.alerts||[]).every(o => (r.sent_alerts||[]).includes(`${r.id}_${o}`));
+      if (allSent) toDelete.push(r.id);
+    }
+  }
+
+  if (toDelete.length) {
+    for (const id of toDelete) await sb.from('reminders').delete().eq('id', id);
+    showToast(`${toDelete.length} completed reminder${toDelete.length>1?'s':''} auto-deleted`);
+  }
+}
+
+async function sendTestEmail() {
+  const from = localStorage.getItem('mj_from');
+  if (!from) return showToast('Enter your sender email in Settings first', 'error');
+  showToast('Sending test email…');
+  const ok = await sendEmail(from, localStorage.getItem('mj_name')||'You', 'Test — Family Reminders is working!',
+    buildEmailHtml({ title: 'Test reminder', description: 'Your email setup is working correctly.', due_date: new Date().toISOString().split('T')[0] }, 1));
+  showToast(ok ? 'Test email sent! Check your inbox.' : 'Failed — check Vercel environment variables', ok ? 'success' : 'error');
+}
+
+// ─── Helpers ───────────────────────────────────────────────
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function initials(n) { return n.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2); }
+function showToast(msg, type='') {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = 'show ' + type;
+  clearTimeout(t._t); t._t = setTimeout(() => t.className = '', 3200);
+}
+
+init();
+</script>
+</body>
+</html>
