@@ -72,25 +72,22 @@ export default async function handler(req, res) {
 }
 
 async function sendEmail(to, toName, subject, html) {
-  const apiKey    = process.env.MAILJET_API_KEY;
-  const secretKey = process.env.MAILJET_SECRET_KEY;
+  const apiKey    = process.env.BREVO_API_KEY;
   const fromEmail = process.env.FROM_EMAIL;
   const fromName  = process.env.FROM_NAME || 'Family Reminders';
 
   try {
-    await fetch('https://api.mailjet.com/v3.1/send', {
+    await fetch('https://api.brevo.com/v3/smtp/email', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': 'Basic ' + Buffer.from(`${apiKey}:${secretKey}`).toString('base64')
+        'api-key': apiKey
       },
       body: JSON.stringify({
-        Messages: [{
-          From: { Email: fromEmail, Name: fromName },
-          To: [{ Email: to, Name: toName || to }],
-          Subject: subject,
-          HTMLPart: html
-        }]
+        sender: { email: fromEmail, name: fromName },
+        to: [{ email: to, name: toName || to }],
+        subject: subject,
+        htmlContent: html
       })
     });
   } catch(e) {
