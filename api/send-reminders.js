@@ -18,13 +18,23 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Failed to load data from Supabase' });
   }
 
-  const today = new Date(); today.setHours(0, 0, 0, 0);
+  // Current IST time (UTC+5:30)
+  const nowUTC  = new Date();
+  const nowIST  = new Date(nowUTC.getTime() + (5.5 * 60 * 60 * 1000));
+  const currentHHMM = `${String(nowIST.getUTCHours()).padStart(2,'0')}:${String(nowIST.getUTCMinutes()).padStart(2,'0')}`;
+  const today   = new Date(nowIST.toISOString().split('T')[0]);
+
   let sent = 0;
   const toDelete = [];
 
   for (const r of reminders) {
     const due = new Date(r.due_date); due.setHours(0, 0, 0, 0);
     const daysLeft = Math.round((due - today) / 86400000);
+
+    // Check if current IST hour matches the reminder's notify_time
+    const notifyHH = (r.notify_time || '08:00').slice(0,2);
+    const currentHH = String(nowIST.getUTCHours()).padStart(2,'0');
+    if (notifyHH !== currentHH) continue;
 
     for (const offset of (r.alerts || [])) {
       const alertKey = `${r.id}_${offset}`;
