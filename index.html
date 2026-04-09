@@ -882,6 +882,10 @@ async function saveEdit() {
   const btn = document.getElementById('edit-save-btn');
   btn.disabled = true; btn.textContent = 'Saving…';
 
+  // Get current sent_alerts so we don't reset them unless date changed
+  const current = reminders.find(r => r.id === editId);
+  const dateChanged = current && current.due_date !== date;
+
   const { error } = await sb.from('reminders').update({
     title,
     description:  document.getElementById('edit-desc').value.trim(),
@@ -889,11 +893,16 @@ async function saveEdit() {
     notify_time:  document.getElementById('edit-notify-time').value,
     recipients,
     auto_delete:  document.getElementById('edit-autodel-toggle').classList.contains('active'),
-    sent_alerts:  []
+    sent_alerts:  dateChanged ? [] : (current?.sent_alerts || [])
   }).eq('id', editId);
 
   btn.disabled = false; btn.textContent = 'Save changes';
   if (error) return showToast('Error updating', 'error');
+
+  // Reload data to make sure UI reflects the saved values
+  const { data } = await sb.from('reminders').select('*').order('due_date');
+  if (data) { reminders = data; renderReminders(); }
+
   closeModal();
   showToast('Reminder updated!', 'success');
 }
