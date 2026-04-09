@@ -78,23 +78,23 @@
   .btn-danger:hover { background: #FEF2F2; }
   .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important; }
 
-  .reminder-item { background: var(--warm-white); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; margin-bottom: 12px; display: flex; align-items: flex-start; gap: 16px; box-shadow: var(--shadow); transition: box-shadow 0.15s; }
+  /* ── Collapsible reminder cards ── */
+  .reminder-item { background: var(--warm-white); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 10px; box-shadow: var(--shadow); overflow: hidden; transition: box-shadow 0.15s; }
   .reminder-item:hover { box-shadow: var(--shadow-lg); }
-  .reminder-date-badge { background: var(--accent-light); color: var(--accent); border-radius: 8px; padding: 8px 12px; text-align: center; min-width: 52px; flex-shrink: 0; }
-  .reminder-date-badge .day { font-family: 'Lora', serif; font-size: 22px; font-weight: 600; line-height: 1; }
-  .reminder-date-badge .month { font-size: 11px; font-weight: 500; letter-spacing: 0.5px; text-transform: uppercase; margin-top: 2px; }
-  .reminder-body { flex: 1; min-width: 0; }
-  .reminder-title { font-family: 'Lora', serif; font-size: 16px; font-weight: 600; margin-bottom: 4px; }
-  .reminder-desc { font-size: 13px; color: var(--ink-light); margin-bottom: 10px; line-height: 1.5; }
-  .reminder-tags { display: flex; flex-wrap: wrap; gap: 6px; }
-  .tag { font-size: 12px; padding: 3px 9px; border-radius: 12px; font-weight: 500; }
-  .tag-alert { background: #FEF9C3; color: #854D0E; }
-  .tag-member { background: var(--green-light); color: var(--green); }
-  .tag-overdue { background: #FEE2E2; color: #991B1B; }
-  .tag-today { background: var(--accent-light); color: var(--accent); }
-  .tag-soon { background: #FFF7ED; color: #9A3412; }
-  .tag-autodel { background: #FEF9C3; color: #854D0E; }
-  .reminder-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+  .reminder-summary { display: flex; align-items: center; gap: 14px; padding: 14px 16px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  .reminder-date-badge { background: var(--accent-light); color: var(--accent); border-radius: 8px; padding: 6px 10px; text-align: center; min-width: 46px; flex-shrink: 0; }
+  .reminder-date-badge .day { font-family: 'Lora', serif; font-size: 20px; font-weight: 600; line-height: 1; }
+  .reminder-date-badge .month { font-size: 10px; font-weight: 500; letter-spacing: 0.5px; text-transform: uppercase; margin-top: 1px; }
+  .reminder-summary-body { flex: 1; min-width: 0; }
+  .reminder-title { font-family: 'Lora', serif; font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .reminder-summary-meta { display: flex; align-items: center; gap: 6px; margin-top: 3px; flex-wrap: wrap; }
+  .reminder-chevron { color: var(--ink-faint); font-size: 13px; flex-shrink: 0; transition: transform 0.2s; }
+  .reminder-item.open .reminder-chevron { transform: rotate(180deg); }
+  .reminder-details { display: none; padding: 0 16px 14px; border-top: 1px solid var(--border); }
+  .reminder-item.open .reminder-details { display: block; }
+  .reminder-desc { font-size: 13px; color: var(--ink-light); margin: 12px 0 10px; line-height: 1.5; }
+  .reminder-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .reminder-actions { display: flex; gap: 8px; }
 
   .member-item { display: flex; align-items: center; gap: 14px; padding: 14px 18px; background: var(--warm-white); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 10px; }
   .avatar { width: 38px; height: 38px; border-radius: 50%; background: var(--accent-light); color: var(--accent); display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 14px; flex-shrink: 0; }
@@ -636,8 +636,11 @@ function renderReminders() {
     else if (diff === 0) statusTag = `<span class="tag tag-today">Today!</span>`;
     else if (diff <= 3)  statusTag = `<span class="tag tag-soon">${diff}d left</span>`;
 
-    const alertTags = (r.alerts||[]).map(a =>
-      `<span class="tag tag-alert">${a==0?'Day-of':a+'d before'}</span>`).join('');
+    const categoryLabel = {
+      bill: 'Bill / Payment', fd: 'FD Renewal', vehicle_insurance: 'Vehicle Insurance',
+      health_insurance: 'Health Insurance', health: 'Health / Medical',
+      government: 'Government / Official', other: 'Other'
+    }[r.category] || r.category;
 
     const recLabel = r.recipients === 'everyone' ? 'Everyone' :
       (() => {
@@ -647,30 +650,41 @@ function renderReminders() {
         } catch { return r.recipients; }
       })();
 
-    const categoryLabel = {
-      bill: 'Bill / Payment', fd: 'FD Renewal', vehicle_insurance: 'Vehicle Insurance',
-      health_insurance: 'Health Insurance', health: 'Health / Medical',
-      government: 'Government / Official', other: 'Other'
-    }[r.category] || r.category;
+    const alertTags = (r.alerts||[]).map(a =>
+      `<span class="tag tag-alert">${a==0?'Day-of':a+'d before'}</span>`).join('');
 
-    const timeLabel = r.notify_time ? ` · ${r.notify_time} IST` : '';
+    // Compact status indicator
+    let statusBadge = '';
+    if (diff < 0)        statusBadge = `<span class="tag tag-overdue">${Math.abs(diff)}d overdue</span>`;
+    else if (diff === 0) statusBadge = `<span class="tag tag-today">Today!</span>`;
+    else if (diff <= 3)  statusBadge = `<span class="tag tag-soon">${diff}d left</span>`;
+    else                 statusBadge = `<span style="font-size:12px;color:var(--ink-faint)">${diff} days away</span>`;
 
-    return `<div class="reminder-item">
-      <div class="reminder-date-badge"><div class="day">${day}</div><div class="month">${mon}</div></div>
-      <div class="reminder-body">
-        <div class="reminder-title">${esc(r.title)}</div>
+    return `<div class="reminder-item" id="ri-${r.id}">
+      <div class="reminder-summary" onclick="toggleCard('${r.id}')">
+        <div class="reminder-date-badge"><div class="day">${day}</div><div class="month">${mon}</div></div>
+        <div class="reminder-summary-body">
+          <div class="reminder-title">${esc(r.title)}</div>
+          <div class="reminder-summary-meta">
+            ${statusBadge}
+            <span style="font-size:12px;color:var(--ink-faint)">${esc(categoryLabel)}</span>
+            ${r.notify_time ? `<span style="font-size:12px;color:var(--ink-faint)">${r.notify_time} IST</span>` : ''}
+          </div>
+        </div>
+        <div class="reminder-chevron">▼</div>
+      </div>
+      <div class="reminder-details">
         ${r.description ? `<div class="reminder-desc">${esc(r.description)}</div>` : ''}
         <div class="reminder-tags">
-          ${statusTag}${alertTags}
-          <span class="tag tag-alert">${esc(categoryLabel)}</span>
+          ${alertTags}
           ${recLabel ? `<span class="tag tag-member">${esc(recLabel)}</span>` : ''}
           ${r.notify_time ? `<span class="tag" style="background:#EDE9FE;color:#5B21B6">${r.notify_time} IST</span>` : ''}
           ${r.auto_delete ? `<span class="tag tag-autodel">auto-delete after</span>` : ''}
         </div>
-      </div>
-      <div class="reminder-actions">
-        <button class="btn btn-ghost" style="padding:6px 12px;font-size:13px" onclick="openEdit('${r.id}')">Edit</button>
-        <button class="btn btn-danger" onclick="deleteReminder('${r.id}')">Delete</button>
+        <div class="reminder-actions">
+          <button class="btn btn-ghost" style="padding:6px 14px;font-size:13px" onclick="openEdit('${r.id}')">Edit</button>
+          <button class="btn btn-danger" onclick="deleteReminder('${r.id}')">Delete</button>
+        </div>
       </div>
     </div>`;
   }).join('');
@@ -847,6 +861,11 @@ async function saveEdit() {
   if (error) return showToast('Error updating', 'error');
   closeModal();
   showToast('Reminder updated!', 'success');
+}
+
+function toggleCard(id) {
+  const el = document.getElementById('ri-' + id);
+  if (el) el.classList.toggle('open');
 }
 
 // ─── Chip toggles ──────────────────────────────────────────
