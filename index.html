@@ -547,6 +547,7 @@ function renderApp() {
     </div>
 
     <div id="tab-settings" class="section">
+
       <div class="card">
         <div class="card-title">Default alert schedule</div>
         <p style="font-size:13px;color:var(--ink-light);margin-bottom:14px">Choose which alerts are pre-selected when you add a new reminder. You can always change them per reminder.</p>
@@ -557,73 +558,51 @@ function renderApp() {
           <label class="alert-chip" onclick="toggleChip(this,event);saveDefaultAlerts()"><input type="checkbox" value="1"> <span class="dot"></span> 1 day before</label>
           <label class="alert-chip" onclick="toggleChip(this,event);saveDefaultAlerts()"><input type="checkbox" value="0"> <span class="dot"></span> On the day</label>
         </div>
-        <div style="font-size:12px;color:var(--ink-faint);margin-top:10px">Your preference is saved on this device.</div>
-      </div>
-      <div class="card">
-        <div class="card-title">Supabase connection</div>
-        <div class="settings-row">
-          <div><div class="settings-label">Project URL</div><div class="settings-sub">Your Supabase project URL</div></div>
-          <input type="text" class="settings-input-sm" id="s-sb-url" value="${localStorage.getItem('sb_url')||''}" placeholder="https://xxx.supabase.co" oninput="saveSupabaseSettings()">
-        </div>
-        <div class="settings-row">
-          <div><div class="settings-label">Anon key</div><div class="settings-sub">Public anon key from Settings → API</div></div>
-          <input type="password" class="settings-input-sm" id="s-sb-anon" value="${localStorage.getItem('sb_anon')||''}" placeholder="eyJhbGci…" oninput="saveSupabaseSettings()">
-        </div>
+        <div style="font-size:12px;color:var(--ink-faint);margin-top:10px">Saved on this device.</div>
       </div>
 
       <div class="card">
-        <div class="card-title">Email settings (Mailjet)</div>
-        <div class="settings-row">
-          <div><div class="settings-label">API key</div><div class="settings-sub">From mailjet.com → Account → API Keys</div></div>
-          <input type="text" class="settings-input-sm" id="s-mj-api" value="${localStorage.getItem('mj_api')||''}" placeholder="Public API key" oninput="saveMailjetSettings()">
-        </div>
-        <div class="settings-row">
-          <div><div class="settings-label">Secret key</div><div class="settings-sub">Alongside your API key</div></div>
-          <input type="password" class="settings-input-sm" id="s-mj-secret" value="${localStorage.getItem('mj_secret')||''}" placeholder="Secret key" oninput="saveMailjetSettings()">
-        </div>
-        <div class="settings-row">
-          <div><div class="settings-label">Sender email</div><div class="settings-sub">Must be verified in Mailjet</div></div>
-          <input type="email" class="settings-input-sm" id="s-mj-from" value="${localStorage.getItem('mj_from')||''}" placeholder="you@yourdomain.com" oninput="saveMailjetSettings()">
-        </div>
-        <div class="settings-row">
-          <div><div class="settings-label">Sender name</div><div class="settings-sub">Shown as "From" in inbox</div></div>
-          <input type="text" class="settings-input-sm" id="s-mj-name" value="${localStorage.getItem('mj_name')||'Family Reminders'}" placeholder="Family Reminders" oninput="saveMailjetSettings()">
-        </div>
-        <div style="margin-top:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <div class="card-title">Test email</div>
+        <p style="font-size:13px;color:var(--ink-light);margin-bottom:14px">Send a test email to confirm reminders are working correctly.</p>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
           <button class="btn btn-primary" onclick="sendTestEmail()">Send test email</button>
-          <div class="api-status ${localStorage.getItem('mj_api') ? 'configured' : ''}" id="api-status">
-            <span class="dot"></span> ${localStorage.getItem('mj_api') ? 'Mailjet configured' : 'Not configured'}
+          <div class="api-status configured" id="api-status">
+            <span class="dot"></span> Brevo configured via Vercel
           </div>
         </div>
       </div>
 
       <div class="card">
-        <div class="card-title">Deploying to Vercel</div>
-        <div style="font-size:14px;color:var(--ink-light);line-height:1.8">
-          <strong style="color:var(--ink)">1. Rename this file to <code style="background:var(--cream);border:1px solid var(--border);border-radius:4px;padding:1px 6px;font-size:13px">index.html</code></strong><br>
-          Upload it to a GitHub repo called <code style="background:var(--cream);border:1px solid var(--border);border-radius:4px;padding:1px 6px;font-size:13px">family-reminders</code><br><br>
-          <strong style="color:var(--ink)">2. Connect Vercel</strong><br>
-          vercel.com → New Project → Import your GitHub repo → Deploy<br><br>
-          <strong style="color:var(--ink)">3. Your URL</strong><br>
-          Vercel gives you <code style="background:var(--cream);border:1px solid var(--border);border-radius:4px;padding:1px 6px;font-size:13px">family-reminders.vercel.app</code> — share with family<br><br>
-          <strong style="color:var(--ink)">4. Custom domain (optional)</strong><br>
-          Vercel → your project → Settings → Domains → add your own domain
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <div class="card-title" style="margin-bottom:0">Admin settings</div>
+          <button class="btn btn-ghost" style="font-size:13px;padding:6px 14px" onclick="toggleAdminPin()" id="admin-lock-btn">Unlock</button>
+        </div>
+        <p style="font-size:13px;color:var(--ink-faint);margin-bottom:0" id="admin-lock-hint">Enter your PIN to change database settings.</p>
+
+        <div id="admin-pin-entry" style="margin-top:14px;display:none">
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="password" id="admin-pin-input" placeholder="Enter PIN" style="width:140px" maxlength="8" onkeydown="if(event.key==='Enter')checkAdminPin()">
+            <button class="btn btn-primary" style="padding:9px 16px;font-size:13px" onclick="checkAdminPin()">Unlock</button>
+          </div>
+          <div id="admin-pin-error" style="font-size:12px;color:#DC2626;margin-top:6px;display:none">Incorrect PIN</div>
+        </div>
+
+        <div id="admin-content" style="display:none;margin-top:16px;border-top:1px solid var(--border);padding-top:16px">
+          <div class="settings-row">
+            <div><div class="settings-label">Supabase URL</div><div class="settings-sub">Your Supabase project URL</div></div>
+            <input type="text" class="settings-input-sm" id="s-sb-url" value="${localStorage.getItem('sb_url')||''}" placeholder="https://xxx.supabase.co" oninput="saveSupabaseSettings()">
+          </div>
+          <div class="settings-row" style="border-bottom:none">
+            <div><div class="settings-label">Anon key</div><div class="settings-sub">Public anon key from Supabase</div></div>
+            <input type="password" class="settings-input-sm" id="s-sb-anon" value="${localStorage.getItem('sb_anon')||''}" placeholder="eyJhbGci…" oninput="saveSupabaseSettings()">
+          </div>
+          <div style="margin-top:14px;display:flex;gap:10px">
+            <button class="btn btn-ghost" style="font-size:13px" onclick="setAdminPin()">Change PIN</button>
+            <button class="btn btn-danger" onclick="lockAdmin()">Lock</button>
+          </div>
         </div>
       </div>
 
-      <div class="card">
-        <div class="card-title">Automatic daily emails (Vercel cron)</div>
-        <p style="font-size:14px;color:var(--ink-light);line-height:1.7;margin-bottom:16px">
-          To send emails automatically without anyone opening the app, add a <code style="background:var(--cream);border:1px solid var(--border);border-radius:4px;padding:1px 6px;font-size:13px">vercel.json</code> file alongside your <code style="background:var(--cream);border:1px solid var(--border);border-radius:4px;padding:1px 6px;font-size:13px">index.html</code> in GitHub:
-        </p>
-        <div style="background:var(--cream);border:1px solid var(--border);border-radius:8px;padding:14px;font-family:monospace;font-size:12px;color:var(--ink-light);line-height:1.8;white-space:pre-wrap">{
-  "crons": [{
-    "path": "/api/send-reminders",
-    "schedule": "0 7 * * *"
-  }]
-}</div>
-        <p style="font-size:13px;color:var(--ink-faint);margin-top:10px">This runs every day at 7am UTC. Ask me to build the <code style="font-size:12px">/api/send-reminders</code> serverless function when you're ready.</p>
-      </div>
     </div>`;
 
   renderReminders();
@@ -1052,6 +1031,65 @@ function toggleRecipient(el, e) {
     const ev = document.getElementById('chip-everyone');
     if (ev) ev.classList.remove('checked');
   }
+}
+
+// ─── Admin PIN ─────────────────────────────────────────────
+function toggleAdminPin() {
+  const pinEntry = document.getElementById('admin-pin-entry');
+  const adminContent = document.getElementById('admin-content');
+  const lockBtn = document.getElementById('admin-lock-btn');
+  const hint = document.getElementById('admin-lock-hint');
+
+  // If already unlocked, lock it
+  if (adminContent.style.display !== 'none') {
+    lockAdmin(); return;
+  }
+
+  // If no PIN set yet, go straight in
+  if (!localStorage.getItem('admin_pin')) {
+    unlockAdmin(); return;
+  }
+
+  // Show PIN entry
+  pinEntry.style.display = 'block';
+  lockBtn.textContent = 'Cancel';
+  hint.style.display = 'none';
+  setTimeout(() => document.getElementById('admin-pin-input')?.focus(), 100);
+}
+
+function checkAdminPin() {
+  const input = document.getElementById('admin-pin-input').value;
+  const saved = localStorage.getItem('admin_pin');
+  if (!saved || input === saved) {
+    unlockAdmin();
+  } else {
+    document.getElementById('admin-pin-error').style.display = 'block';
+    document.getElementById('admin-pin-input').value = '';
+  }
+}
+
+function unlockAdmin() {
+  document.getElementById('admin-pin-entry').style.display = 'none';
+  document.getElementById('admin-content').style.display = 'block';
+  document.getElementById('admin-lock-btn').textContent = 'Lock';
+  document.getElementById('admin-lock-hint').style.display = 'none';
+  document.getElementById('admin-pin-error').style.display = 'none';
+  if (document.getElementById('admin-pin-input')) document.getElementById('admin-pin-input').value = '';
+}
+
+function lockAdmin() {
+  document.getElementById('admin-pin-entry').style.display = 'none';
+  document.getElementById('admin-content').style.display = 'none';
+  document.getElementById('admin-lock-btn').textContent = 'Unlock';
+  document.getElementById('admin-lock-hint').style.display = 'block';
+}
+
+function setAdminPin() {
+  const pin = prompt('Set a new admin PIN (numbers only, 4–8 digits):');
+  if (pin === null) return;
+  if (!/^\d{4,8}$/.test(pin)) { showToast('PIN must be 4–8 digits', 'error'); return; }
+  localStorage.setItem('admin_pin', pin);
+  showToast('PIN saved!', 'success');
 }
 
 // ─── Settings ──────────────────────────────────────────────
