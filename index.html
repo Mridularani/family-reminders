@@ -78,6 +78,12 @@
   .btn-danger:hover { background: #FEF2F2; }
   .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important; }
 
+  /* ── Filter tabs ── */
+  .filter-tabs { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
+  .filter-tab { padding: 6px 16px; border-radius: 20px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid var(--border); background: var(--warm-white); color: var(--ink-light); transition: all 0.15s; -webkit-tap-highlight-color: transparent; }
+  .filter-tab:hover { border-color: var(--ink-faint); }
+  .filter-tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
   /* ── Collapsible reminder cards ── */
   .reminder-item { background: var(--warm-white); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 10px; box-shadow: var(--shadow); overflow: hidden; transition: box-shadow 0.15s; }
   .reminder-item:hover { box-shadow: var(--shadow-lg); }
@@ -240,6 +246,7 @@ let reminders = [];
 let members   = [];
 let editId    = null;
 let channel   = null;
+let currentFilter = 'week';
 
 document.getElementById('today-date').textContent =
   new Date().toLocaleDateString('en-IN', {weekday:'short', day:'numeric', month:'long', year:'numeric'});
@@ -434,6 +441,12 @@ function renderApp() {
 
     <div id="tab-reminders" class="section active">
       <div class="stats-bar" id="stats-bar"></div>
+      <div class="filter-tabs" id="filter-tabs">
+        <button class="filter-tab active" onclick="setFilter('week', this)">This week</button>
+        <button class="filter-tab" onclick="setFilter('month', this)">This month</button>
+        <button class="filter-tab" onclick="setFilter('year', this)">This year</button>
+        <button class="filter-tab" onclick="setFilter('all', this)">All</button>
+      </div>
       <div id="reminders-list"></div>
     </div>
 
@@ -603,6 +616,13 @@ function switchTab(name) {
   if (name === 'add') buildRecipientChips();
 }
 
+function setFilter(filter, btn) {
+  currentFilter = filter;
+  document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  renderReminders();
+}
+
 // ─── Render reminders ──────────────────────────────────────
 function renderReminders() {
   const list = document.getElementById('reminders-list');
@@ -629,7 +649,24 @@ function renderReminders() {
     return;
   }
 
-  list.innerHTML = [...reminders].sort((a,b) => new Date(a.due_date) - new Date(b.due_date)).map(r => {
+  // Apply filter — always include overdue regardless of filter
+  const filtered = [...reminders].filter(r => {
+    const d = new Date(r.due_date); d.setHours(0,0,0,0);
+    const diff = Math.round((d - now) / 86400000);
+    if (diff < 0) return true; // always show overdue
+    if (currentFilter === 'week')  return diff <= 7;
+    if (currentFilter === 'month') return diff <= 31;
+    if (currentFilter === 'year')  return diff <= 365;
+    return true; // all
+  }).sort((a,b) => new Date(a.due_date) - new Date(b.due_date));
+
+  if (!filtered.length) {
+    const labels = { week: 'this week', month: 'this month', year: 'this year' };
+    list.innerHTML = `<div class="empty"><div class="empty-icon">📅</div><h3>Nothing due ${labels[currentFilter] || ''}</h3><p>No reminders in this period</p></div>`;
+    return;
+  }
+
+  list.innerHTML = filtered.map(r => {
     const d = new Date(r.due_date); d.setHours(0,0,0,0);
     const diff = Math.round((d - now) / 86400000);
     const day  = d.getDate();
