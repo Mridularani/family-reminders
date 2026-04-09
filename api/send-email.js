@@ -12,39 +12,36 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Missing required fields: to, subject, html' });
   }
 
-  const apiKey    = process.env.MAILJET_API_KEY;
-  const secretKey = process.env.MAILJET_SECRET_KEY;
+  const apiKey    = process.env.BREVO_API_KEY;
   const fromEmail = process.env.FROM_EMAIL;
   const fromName  = process.env.FROM_NAME || 'Family Reminders';
 
-  if (!apiKey || !secretKey || !fromEmail) {
+  if (!apiKey || !fromEmail) {
     return res.status(500).json({ error: 'Email not configured — check Vercel environment variables' });
   }
 
   try {
-    const response = await fetch('https://api.mailjet.com/v3.1/send', {
+    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': 'Basic ' + Buffer.from(`${apiKey}:${secretKey}`).toString('base64')
+        'api-key': apiKey
       },
       body: JSON.stringify({
-        Messages: [{
-          From: { Email: fromEmail, Name: fromName },
-          To: [{ Email: to, Name: toName || to }],
-          Subject: subject,
-          HTMLPart: html
-        }]
+        sender: { email: fromEmail, name: fromName },
+        to: [{ email: to, name: toName || to }],
+        subject: subject,
+        htmlContent: html
       })
     });
 
     const data = await response.json();
 
-    if (data.Messages?.[0]?.Status === 'success') {
-      return res.status(200).json({ success: true });
+    if (response.ok && data.messageId) {
+      return res.status(200).json({ success: true, messageId: data.messageId });
     } else {
-      console.error('Mailjet error:', JSON.stringify(data));
-      return res.status(400).json({ error: 'Mailjet rejected the request', detail: data });
+      console.error('Brevo error:', JSON.stringify(data));
+      return res.status(400).json({ error: 'Brevo rejected the request', detail: data });
     }
   } catch (err) {
     console.error('Send error:', err);
