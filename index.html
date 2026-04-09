@@ -219,13 +219,11 @@ document.getElementById('today-date').textContent =
   new Date().toLocaleDateString('en-IN', {weekday:'short', day:'numeric', month:'long', year:'numeric'});
 
 async function init() {
-  const url  = localStorage.getItem('sb_url')  || '';
-  const anon = localStorage.getItem('sb_anon') || '';
+  const url  = 'https://vbeztitzdnzfwmlfiatt.supabase.co';
+  const anon = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZiZXp0aXR6ZG56ZndtbGZpYXR0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2MzkyMDEsImV4cCI6MjA5MTIxNTIwMX0.E9WOu9ctreqcfJBSpnHkjtssWWmOvE__7skbpSDN2WY';
 
-  if (!url || !anon) {
-    renderSetup();
-    return;
-  }
+  localStorage.setItem('sb_url',  url);
+  localStorage.setItem('sb_anon', anon);
 
   try {
     sb = supabase.createClient(url, anon);
@@ -236,7 +234,11 @@ async function init() {
     checkAndSendDueReminders();
   } catch(e) {
     setSyncStatus('error');
-    renderSetup(true);
+    document.getElementById('main-container').innerHTML = `
+      <div style="text-align:center;padding:60px 20px;color:#57534E">
+        <div style="font-size:18px;font-weight:500;margin-bottom:8px">Could not connect to database</div>
+        <div style="font-size:14px">Please check your internet connection and try refreshing.</div>
+      </div>`;
   }
 }
 
