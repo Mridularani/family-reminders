@@ -191,6 +191,20 @@
     <div class="form-row"><label>Description</label><textarea id="edit-desc"></textarea></div>
     <div class="form-row"><label>Due date</label><input type="date" id="edit-date"></div>
     <div class="form-row">
+      <label>Time to send email (IST)</label>
+      <select id="edit-notify-time">
+        <option value="06:00">6:00 AM</option>
+        <option value="07:00">7:00 AM</option>
+        <option value="08:00">8:00 AM</option>
+        <option value="09:00">9:00 AM</option>
+        <option value="10:00">10:00 AM</option>
+        <option value="12:00">12:00 PM (noon)</option>
+        <option value="15:00">3:00 PM</option>
+        <option value="18:00">6:00 PM</option>
+        <option value="20:00">8:00 PM</option>
+      </select>
+    </div>
+    <div class="form-row">
       <label>After reminder is sent</label>
       <div class="toggle-row" id="edit-autodel-toggle" onclick="toggleAutodel(this)">
         <div class="toggle-switch"></div>
@@ -422,34 +436,57 @@ function renderApp() {
     <div id="tab-add" class="section">
       <div class="card">
         <div class="card-title">New reminder</div>
-        <div class="form-row"><label>What is this reminder for?</label><input type="text" id="r-title" placeholder="e.g. School fee payment, Insurance renewal…"></div>
+        <div class="form-row"><label>What is this reminder for?</label><input type="text" id="r-title" placeholder="e.g. Car insurance renewal, FD maturity…"></div>
         <div class="form-row"><label>Details (optional)</label><textarea id="r-desc" placeholder="Any extra notes…"></textarea></div>
         <div class="form-row-2">
           <div class="form-row" style="margin-bottom:0"><label>Due date</label><input type="date" id="r-date"></div>
           <div class="form-row" style="margin-bottom:0"><label>Category</label>
-            <select id="r-category">
+            <select id="r-category" onchange="toggleCustomCategory(this.value)">
               <option value="bill">Bill / Payment</option>
-              <option value="school">School</option>
+              <option value="fd">FD Renewal</option>
+              <option value="vehicle_insurance">Vehicle Insurance</option>
+              <option value="health_insurance">Health Insurance</option>
               <option value="health">Health / Medical</option>
-              <option value="insurance">Insurance</option>
               <option value="government">Government / Official</option>
               <option value="other">Other</option>
+              <option value="custom">+ Add custom category…</option>
             </select>
           </div>
         </div>
-        <div class="form-row" style="margin-top:16px">
-          <label>Send reminder alerts</label>
-          <div class="alert-options" id="alert-options">
-            <label class="alert-chip" onclick="toggleChip(this)"><input type="checkbox" value="7"> <span class="dot"></span> 1 week before</label>
-            <label class="alert-chip checked" onclick="toggleChip(this)"><input type="checkbox" value="3" checked> <span class="dot"></span> 3 days before</label>
-            <label class="alert-chip checked" onclick="toggleChip(this)"><input type="checkbox" value="1" checked> <span class="dot"></span> 1 day before</label>
-            <label class="alert-chip checked" onclick="toggleChip(this)"><input type="checkbox" value="0" checked> <span class="dot"></span> On the day</label>
+        <div class="form-row" id="custom-category-row" style="display:none">
+          <label>Custom category name</label>
+          <input type="text" id="r-custom-category" placeholder="e.g. Gym membership, Subscription…">
+        </div>
+        <div class="form-row-2" style="margin-top:16px">
+          <div class="form-row" style="margin-bottom:0">
+            <label>Send reminder alerts</label>
+            <div class="alert-options" id="alert-options">
+              <label class="alert-chip" onclick="toggleChip(this,event)"><input type="checkbox" value="7"> <span class="dot"></span> 1 week before</label>
+              <label class="alert-chip checked" onclick="toggleChip(this,event)"><input type="checkbox" value="3" checked> <span class="dot"></span> 3 days before</label>
+              <label class="alert-chip checked" onclick="toggleChip(this,event)"><input type="checkbox" value="1" checked> <span class="dot"></span> 1 day before</label>
+              <label class="alert-chip checked" onclick="toggleChip(this,event)"><input type="checkbox" value="0" checked> <span class="dot"></span> On the day</label>
+            </div>
+          </div>
+          <div class="form-row" style="margin-bottom:0">
+            <label>Time to send email</label>
+            <select id="r-notify-time">
+              <option value="06:00">6:00 AM</option>
+              <option value="07:00">7:00 AM</option>
+              <option value="08:00" selected>8:00 AM</option>
+              <option value="09:00">9:00 AM</option>
+              <option value="10:00">10:00 AM</option>
+              <option value="12:00">12:00 PM (noon)</option>
+              <option value="15:00">3:00 PM</option>
+              <option value="18:00">6:00 PM</option>
+              <option value="20:00">8:00 PM</option>
+            </select>
+            <div style="font-size:12px;color:var(--ink-faint);margin-top:6px">India time (IST)</div>
           </div>
         </div>
         <div class="form-row">
           <label>Notify</label>
           <div class="recipient-options" id="recipient-options-add">
-            <label class="recipient-chip checked" id="chip-everyone" onclick="toggleEveryone(this)"><input type="checkbox" value="everyone" checked> Everyone</label>
+            <label class="recipient-chip checked" id="chip-everyone" onclick="toggleEveryone(this,event)"><input type="checkbox" value="everyone" checked> Everyone</label>
           </div>
           <div style="font-size:12px;color:var(--ink-faint);margin-top:8px">Add family members in the Family tab first</div>
         </div>
@@ -610,6 +647,14 @@ function renderReminders() {
         } catch { return r.recipients; }
       })();
 
+    const categoryLabel = {
+      bill: 'Bill / Payment', fd: 'FD Renewal', vehicle_insurance: 'Vehicle Insurance',
+      health_insurance: 'Health Insurance', health: 'Health / Medical',
+      government: 'Government / Official', other: 'Other'
+    }[r.category] || r.category;
+
+    const timeLabel = r.notify_time ? ` · ${r.notify_time} IST` : '';
+
     return `<div class="reminder-item">
       <div class="reminder-date-badge"><div class="day">${day}</div><div class="month">${mon}</div></div>
       <div class="reminder-body">
@@ -617,7 +662,9 @@ function renderReminders() {
         ${r.description ? `<div class="reminder-desc">${esc(r.description)}</div>` : ''}
         <div class="reminder-tags">
           ${statusTag}${alertTags}
+          <span class="tag tag-alert">${esc(categoryLabel)}</span>
           ${recLabel ? `<span class="tag tag-member">${esc(recLabel)}</span>` : ''}
+          ${r.notify_time ? `<span class="tag" style="background:#EDE9FE;color:#5B21B6">${r.notify_time} IST</span>` : ''}
           ${r.auto_delete ? `<span class="tag tag-autodel">auto-delete after</span>` : ''}
         </div>
       </div>
@@ -649,11 +696,11 @@ function buildRecipientChips() {
   const c = document.getElementById('recipient-options-add');
   if (!c) return;
   c.innerHTML = `
-    <label class="recipient-chip checked" id="chip-everyone" onclick="toggleEveryone(this)">
+    <label class="recipient-chip checked" id="chip-everyone" onclick="toggleEveryone(this,event)">
       <input type="checkbox" value="everyone" checked> Everyone
     </label>
     ${members.map(m => `
-      <label class="recipient-chip" onclick="toggleRecipient(this)">
+      <label class="recipient-chip" onclick="toggleRecipient(this,event)">
         <input type="checkbox" value="${m.id}"> ${esc(m.name)}
       </label>`).join('')}`;
 }
@@ -667,6 +714,13 @@ async function addReminder() {
 
   const alerts = [...document.querySelectorAll('#alert-options .alert-chip.checked input')]
     .map(i => parseInt(i.value));
+
+  const catSelect = document.getElementById('r-category').value;
+  const category  = catSelect === 'custom'
+    ? (document.getElementById('r-custom-category').value.trim() || 'Other')
+    : catSelect;
+
+  const notifyTime = document.getElementById('r-notify-time').value;
 
   const evChip = document.querySelector('#recipient-options-add #chip-everyone');
   let recipients;
@@ -685,7 +739,8 @@ async function addReminder() {
     title,
     description: document.getElementById('r-desc').value.trim(),
     due_date: date,
-    category: document.getElementById('r-category').value,
+    category,
+    notify_time: notifyTime,
     alerts,
     recipients,
     auto_delete: document.getElementById('autodel-toggle').classList.contains('active'),
@@ -700,8 +755,19 @@ async function addReminder() {
   switchTab('reminders');
 }
 
+function toggleCustomCategory(val) {
+  const row = document.getElementById('custom-category-row');
+  if (row) row.style.display = val === 'custom' ? 'block' : 'none';
+}
+
 function clearForm() {
-  ['r-title','r-desc','r-date'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+  ['r-title','r-desc','r-date','r-custom-category'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+  const cat = document.getElementById('r-category');
+  if (cat) cat.value = 'bill';
+  const customRow = document.getElementById('custom-category-row');
+  if (customRow) customRow.style.display = 'none';
+  const timeEl = document.getElementById('r-notify-time');
+  if (timeEl) timeEl.value = '08:00';
   document.querySelectorAll('#alert-options .alert-chip').forEach(c => {
     const v = c.querySelector('input').value;
     const def = ['3','1','0'].includes(v);
@@ -752,6 +818,7 @@ function openEdit(id) {
   document.getElementById('edit-title').value = r.title;
   document.getElementById('edit-desc').value  = r.description || '';
   document.getElementById('edit-date').value  = r.due_date;
+  document.getElementById('edit-notify-time').value = r.notify_time || '08:00';
   document.getElementById('edit-autodel-toggle').classList.toggle('active', !!r.auto_delete);
   document.getElementById('edit-modal').classList.add('open');
 }
@@ -769,10 +836,11 @@ async function saveEdit() {
 
   const { error } = await sb.from('reminders').update({
     title,
-    description: document.getElementById('edit-desc').value.trim(),
-    due_date: date,
-    auto_delete: document.getElementById('edit-autodel-toggle').classList.contains('active'),
-    sent_alerts: []
+    description:  document.getElementById('edit-desc').value.trim(),
+    due_date:     date,
+    notify_time:  document.getElementById('edit-notify-time').value,
+    auto_delete:  document.getElementById('edit-autodel-toggle').classList.contains('active'),
+    sent_alerts:  []
   }).eq('id', editId);
 
   btn.disabled = false; btn.textContent = 'Save changes';
@@ -782,21 +850,26 @@ async function saveEdit() {
 }
 
 // ─── Chip toggles ──────────────────────────────────────────
-function toggleChip(el) { el.classList.toggle('checked'); el.querySelector('input').checked = el.classList.contains('checked'); }
+function toggleChip(el, e) { 
+  e.preventDefault(); 
+  el.classList.toggle('checked'); 
+}
 function toggleAutodel(el) { el.classList.toggle('active'); }
-function toggleEveryone(el) {
+function toggleEveryone(el, e) {
+  e.preventDefault();
   const willCheck = !el.classList.contains('checked');
   el.classList.toggle('checked', willCheck);
   if (willCheck) {
     document.querySelectorAll('#recipient-options-add .recipient-chip:not(#chip-everyone)')
-      .forEach(c => { c.classList.remove('checked'); c.querySelector('input').checked = false; });
+      .forEach(c => c.classList.remove('checked'));
   }
 }
-function toggleRecipient(el) {
+function toggleRecipient(el, e) {
+  e.preventDefault();
   el.classList.toggle('checked');
   if (el.classList.contains('checked')) {
     const ev = document.getElementById('chip-everyone');
-    if (ev) { ev.classList.remove('checked'); ev.querySelector('input').checked = false; }
+    if (ev) ev.classList.remove('checked');
   }
 }
 
