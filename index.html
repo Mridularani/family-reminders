@@ -205,6 +205,10 @@
       </select>
     </div>
     <div class="form-row">
+      <label>Notify</label>
+      <div class="recipient-options" id="edit-recipient-options"></div>
+    </div>
+    <div class="form-row">
       <label>After reminder is sent</label>
       <div class="toggle-row" id="edit-autodel-toggle" onclick="toggleAutodel(this)">
         <div class="toggle-switch"></div>
@@ -834,16 +838,46 @@ function openEdit(id) {
   document.getElementById('edit-date').value  = r.due_date;
   document.getElementById('edit-notify-time').value = r.notify_time || '08:00';
   document.getElementById('edit-autodel-toggle').classList.toggle('active', !!r.auto_delete);
+
+  // Build recipient chips showing current selection
+  const container = document.getElementById('edit-recipient-options');
+  let currentIds = [];
+  const isEveryone = r.recipients === 'everyone';
+  if (!isEveryone) {
+    try { currentIds = JSON.parse(r.recipients); } catch { currentIds = []; }
+  }
+  container.innerHTML = `
+    <label class="recipient-chip ${isEveryone ? 'checked' : ''}" id="edit-chip-everyone" onclick="toggleEditEveryone(this, event)">
+      <input type="checkbox" value="everyone" ${isEveryone ? 'checked' : ''}> Everyone
+    </label>
+    ${members.map(m => `
+      <label class="recipient-chip ${currentIds.includes(m.id) ? 'checked' : ''}" onclick="toggleEditRecipient(this, event)">
+        <input type="checkbox" value="${m.id}" ${currentIds.includes(m.id) ? 'checked' : ''}> ${esc(m.name)}
+      </label>`).join('')}`;
+
   document.getElementById('edit-modal').classList.add('open');
 }
+
 function closeModal() {
   document.getElementById('edit-modal').classList.remove('open');
   editId = null;
 }
+
 async function saveEdit() {
   const title = document.getElementById('edit-title').value.trim();
   const date  = document.getElementById('edit-date').value;
   if (!title || !date) return showToast('Title and date required', 'error');
+
+  // Get recipients from edit modal
+  const evChip = document.getElementById('edit-chip-everyone');
+  let recipients;
+  if (evChip && evChip.classList.contains('checked')) {
+    recipients = 'everyone';
+  } else {
+    const ids = [...document.querySelectorAll('#edit-recipient-options .recipient-chip.checked:not(#edit-chip-everyone) input')]
+      .map(i => i.value);
+    recipients = ids.length ? JSON.stringify(ids) : 'everyone';
+  }
 
   const btn = document.getElementById('edit-save-btn');
   btn.disabled = true; btn.textContent = 'Saving…';
@@ -853,6 +887,7 @@ async function saveEdit() {
     description:  document.getElementById('edit-desc').value.trim(),
     due_date:     date,
     notify_time:  document.getElementById('edit-notify-time').value,
+    recipients,
     auto_delete:  document.getElementById('edit-autodel-toggle').classList.contains('active'),
     sent_alerts:  []
   }).eq('id', editId);
@@ -866,6 +901,24 @@ async function saveEdit() {
 function toggleCard(id) {
   const el = document.getElementById('ri-' + id);
   if (el) el.classList.toggle('open');
+}
+
+function toggleEditEveryone(el, e) {
+  e.preventDefault();
+  const willCheck = !el.classList.contains('checked');
+  el.classList.toggle('checked', willCheck);
+  if (willCheck) {
+    document.querySelectorAll('#edit-recipient-options .recipient-chip:not(#edit-chip-everyone)')
+      .forEach(c => c.classList.remove('checked'));
+  }
+}
+function toggleEditRecipient(el, e) {
+  e.preventDefault();
+  el.classList.toggle('checked');
+  if (el.classList.contains('checked')) {
+    const ev = document.getElementById('edit-chip-everyone');
+    if (ev) ev.classList.remove('checked');
+  }
 }
 
 // ─── Chip toggles ──────────────────────────────────────────
