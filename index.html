@@ -544,9 +544,15 @@ async function registerPush() {
 
     if (insertError) {
       console.error('Push insert error:', insertError);
-      showToast('Could not save subscription: ' + insertError.message, 'error');
+      showToast('Save error: ' + insertError.message, 'error');
       return false;
     }
+
+    // Verify it was saved
+    const { data: verify } = await sb.from('push_subscriptions')
+      .select('id').eq('user_id', currentUser.id);
+    console.log('Subscriptions after save:', verify?.length);
+    showToast('Saved ' + (verify?.length || 0) + ' subscription(s)', 'success');
 
     return true;
   } catch(e) {
@@ -671,7 +677,10 @@ async function submitAuth() {
   // Check if email confirmation is still needed (signup returns user but no session)
   if (authMode === 'signup' && !result.data.session) {
     errEl.style.color = '#15803D';
-    errEl.textContent = 'Account created! Check your email for a confirmation link, then come back and sign in.';
+    errEl.innerHTML = `Account created! Check your email for a confirmation link, then come back and sign in.<br><br>
+      <span style="color:var(--ink-faint);font-size:12px">Didn't get the email? 
+      <a href="#" onclick="document.getElementById('auth-email').value='${email}';switchAuthTab('login',document.querySelectorAll('.auth-tab')[0]);magicLink();return false;" 
+      style="color:var(--accent)">Send a magic link instead</a></span>`;
     errEl.style.display = 'block';
     btn.textContent = 'Create account';
     btn.disabled = false;
@@ -1322,6 +1331,17 @@ async function showSettings() {
       </div>
     </div>
 
+    <div style="border-top:1px solid var(--border);padding-top:16px;margin-bottom:16px">
+      <div class="card-title" style="font-size:15px;margin-bottom:6px">Change password</div>
+      <div class="form-row">
+        <input type="password" id="settings-new-pass" placeholder="New password (min 6 characters)">
+      </div>
+      <div class="form-row">
+        <input type="password" id="settings-confirm-pass" placeholder="Confirm new password">
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="changePassword()">Update password</button>
+    </div>
+
     <div style="border-top:1px solid var(--border);padding-top:16px">
       <button class="btn btn-ghost btn-sm" onclick="showAdminSettings()">Admin settings (PIN protected)</button>
     </div>
@@ -1358,6 +1378,18 @@ async function togglePushNotifications(el) {
       sub.textContent = 'Tap to turn on';
     }
   }
+}
+
+async function changePassword() {
+  const newPass = document.getElementById('settings-new-pass').value;
+  const confirmPass = document.getElementById('settings-confirm-pass').value;
+  if (!newPass || newPass.length < 6) return showToast('Password must be at least 6 characters', 'error');
+  if (newPass !== confirmPass) return showToast('Passwords do not match', 'error');
+  const { error } = await sb.auth.updateUser({ password: newPass });
+  if (error) return showToast('Error: ' + error.message, 'error');
+  document.getElementById('settings-new-pass').value = '';
+  document.getElementById('settings-confirm-pass').value = '';
+  showToast('Password updated!', 'success');
 }
 
 function showAdminSettings() {
