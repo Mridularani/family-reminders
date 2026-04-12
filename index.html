@@ -353,13 +353,10 @@ textarea { resize: vertical; min-height: 68px; }
 const SUPABASE_URL  = 'https://vbeztitzdnzfwmlfiatt.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZiZXp0aXR6ZG56ZndtbGZpYXR0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2MzkyMDEsImV4cCI6MjA5MTIxNTIwMX0.E9WOu9ctreqcfJBSpnHkjtssWWmOvE__7skbpSDN2WY';
 
-// Wait for supabase to be available
-let sb;
+let sb = null;
 function initSupabase() {
-  if (typeof supabase === 'undefined') {
-    console.error('Supabase library not loaded');
-    return false;
-  }
+  if (sb) return true; // already initialized — prevent duplicates
+  if (typeof supabase === 'undefined') { console.error('Supabase not loaded'); return false; }
   sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
     auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
   });
@@ -455,13 +452,23 @@ async function loadAll() {
     if (re) console.error('Reminders error:', re);
     allReminders = r || [];
 
-    // Load members for each family
+    // Load members for each family — fetch memberships then profiles separately
     for (const m of families) {
       const { data: fms } = await sb.from('family_memberships')
-        .select('*, profiles(*)')
+        .select('id, user_id, role, status, family_id')
         .eq('family_id', m.family_id)
         .eq('status', 'approved');
-      familyMembers[m.family_id] = fms || [];
+
+      if (fms?.length) {
+        const userIds = fms.map(f => f.user_id);
+        const { data: profs } = await sb.from('profiles').select('*').in('id', userIds);
+        familyMembers[m.family_id] = fms.map(f => ({
+          ...f,
+          profiles: profs?.find(p => p.id === f.user_id) || null
+        }));
+      } else {
+        familyMembers[m.family_id] = [];
+      }
     }
   } catch(e) {
     console.error('loadAll error:', e);
@@ -858,14 +865,23 @@ async function loadPendingRequests(familyId) {
   const myMembership = families.find(m => m.family_id === familyId);
   if (myMembership?.role !== 'admin') return;
   const { data: pending } = await sb.from('family_memberships')
-    .select('*, profiles(*)')
+    .select('id, user_id, family_id, status')
     .eq('family_id', familyId)
     .eq('status', 'pending');
   if (!pending?.length) return;
+
+  // Fetch profiles separately
+  const userIds = pending.map(p => p.user_id);
+  const { data: profs } = await sb.from('profiles').select('*').in('id', userIds);
+  const pendingWithProfiles = pending.map(p => ({
+    ...p,
+    profiles: profs?.find(x => x.id === p.user_id) || null
+  }));
+
   const el = document.getElementById('family-members-list');
   if (!el) return;
   el.innerHTML += `<div style="margin-top:16px;font-size:13px;font-weight:500;color:var(--ink-light);margin-bottom:8px">Pending requests</div>` +
-    pending.map(p => `<div class="member-item">
+    pendingWithProfiles.map(p => `<div class="member-item">
       <div class="avatar">${initials(p.profiles?.name||'?')}</div>
       <div class="member-info">
         <div class="member-name">${esc(p.profiles?.name||'Unknown')}</div>
@@ -881,8 +897,7 @@ async function loadPendingRequests(familyId) {
 
 async function setMemberRole(membershipId, role, familyId) {
   await sb.from('family_memberships').update({ role }).eq('id', membershipId);
-  const { data: fms } = await sb.from('family_memberships').select('*, profiles(*)').eq('family_id', familyId).eq('status', 'approved');
-  familyMembers[familyId] = fms || [];
+  await reloadFamilyMembers(familyId);
   renderFamilyMembersList();
   showToast('Role updated', 'success');
 }
@@ -890,10 +905,26 @@ async function setMemberRole(membershipId, role, familyId) {
 async function removeMember(membershipId, familyId) {
   if (!confirm('Remove this member from the family?')) return;
   await sb.from('family_memberships').delete().eq('id', membershipId);
-  const { data: fms } = await sb.from('family_memberships').select('*, profiles(*)').eq('family_id', familyId).eq('status', 'approved');
-  familyMembers[familyId] = fms || [];
+  await reloadFamilyMembers(familyId);
   renderFamilyMembersList();
   showToast('Member removed');
+}
+
+async function reloadFamilyMembers(familyId) {
+  const { data: fms } = await sb.from('family_memberships')
+    .select('id, user_id, role, status, family_id')
+    .eq('family_id', familyId)
+    .eq('status', 'approved');
+  if (fms?.length) {
+    const userIds = fms.map(f => f.user_id);
+    const { data: profs } = await sb.from('profiles').select('*').in('id', userIds);
+    familyMembers[familyId] = fms.map(f => ({
+      ...f,
+      profiles: profs?.find(p => p.id === f.user_id) || null
+    }));
+  } else {
+    familyMembers[familyId] = [];
+  }
 }
 
 async function approveMember(membershipId, familyId) {
