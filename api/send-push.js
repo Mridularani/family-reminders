@@ -10,7 +10,7 @@ export default async function handler(req, res) {
 
   webpush.setVapidDetails(`mailto:${vapidEmail}`, vapidPublic, vapidPrivate);
 
-  const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+  const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY);
 
   const { data: subscriptions } = await sb.from('push_subscriptions').select('*');
   if (!subscriptions?.length) return res.status(200).json({ sent: 0, message: 'No subscriptions' });
