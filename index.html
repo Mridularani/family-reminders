@@ -366,12 +366,15 @@ let channel       = null;
 
 // ─── INIT ────────────────────────────────────────────────
 async function init() {
+  console.log('init started, hash:', window.location.hash?.substring(0,30));
+
   // Handle magic link / OAuth callback — session comes in the URL hash
   if (window.location.hash && window.location.hash.includes('access_token')) {
+    console.log('magic link detected');
     const { data, error } = await sb.auth.getSession();
+    console.log('session from hash:', data?.session?.user?.email, error);
     if (data?.session) {
       currentUser = data.session.user;
-      // Clean the URL
       window.history.replaceState({}, document.title, window.location.pathname);
       await loadAll();
       if (!families.length) renderOnboarding();
@@ -381,10 +384,14 @@ async function init() {
     }
   }
 
-  const { data: { session } } = await sb.auth.getSession();
+  console.log('checking existing session');
+  const { data: { session }, error } = await sb.auth.getSession();
+  console.log('session:', session?.user?.email, 'error:', error);
   if (!session) { renderAuth(); return; }
   currentUser = session.user;
+  console.log('loading data...');
   await loadAll();
+  console.log('families:', families.length, 'reminders:', allReminders.length);
   renderApp();
   subscribeRealtime();
 }
