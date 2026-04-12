@@ -374,7 +374,23 @@ async function init() {
   subscribeRealtime();
 }
 
+async function ensureProfile() {
+  if (!currentUser) return;
+  const { data: p } = await sb.from('profiles').select('id').eq('id', currentUser.id).single();
+  if (!p) {
+    const name = currentUser.user_metadata?.full_name || currentUser.email.split('@')[0];
+    await sb.from('profiles').upsert({
+      id: currentUser.id,
+      name,
+      email: currentUser.email
+    });
+  }
+}
+
 async function loadAll() {
+  // Always ensure profile exists
+  await ensureProfile();
+
   // Load profile
   const { data: p } = await sb.from('profiles').select('*').eq('id', currentUser.id).single();
   currentProfile = p;
