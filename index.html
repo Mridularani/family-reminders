@@ -500,6 +500,81 @@ function setSyncStatus(state) {
   l.textContent = state === 'live' ? 'Live' : 'Offline';
 }
 
+// ─── PUSH NOTIFICATIONS ──────────────────────────────────
+const VAPID_PUBLIC_KEY = 'BKFfPQTy4HFbvTmiQTWvXcU_BLuep3-NkXQPBe5eYxvl8y6twiAqsF_C5ifC5oCp6-vrHMo3a86uXzFCiwPvNdA';
+
+async function registerPush() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    showToast('Push notifications not supported on this browser', 'error');
+    return false;
+  }
+  try {
+    const reg = await navigator.serviceWorker.register('/sw.js');
+    await navigator.serviceWorker.ready;
+
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') {
+      showToast('Notification permission denied', 'error');
+      return false;
+    }
+
+    const existing = await reg.pushManager.getSubscription();
+    if (existing) await existing.unsubscribe();
+
+    const sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+    });
+
+    await sb.from('push_subscriptions').upsert({
+      user_id: currentUser.id,
+      subscription: sub.toJSON()
+    });
+
+    return true;
+  } catch(e) {
+    console.error('Push registration error:', e);
+    showToast('Could not enable notifications: ' + e.message, 'error');
+    return false;
+  }
+}
+
+async function unregisterPush() {
+  try {
+    const reg = await navigator.serviceWorker.getRegistration('/sw.js');
+    if (reg) {
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) await sub.unsubscribe();
+    }
+    await sb.from('push_subscriptions').delete().eq('user_id', currentUser.id);
+    return true;
+  } catch(e) {
+    console.error('Push unregister error:', e);
+    return false;
+  }
+}
+
+async function getPushStatus() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return 'unsupported';
+  const permission = Notification.permission;
+  if (permission === 'denied') return 'denied';
+  try {
+    const reg = await navigator.serviceWorker.getRegistration('/sw.js');
+    if (!reg) return 'off';
+    const sub = await reg.pushManager.getSubscription();
+    return sub ? 'on' : 'off';
+  } catch { return 'off'; }
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
+  return outputArray;
+}
+
 // ─── AUTH ─────────────────────────────────────────────────
 function renderAuth() {
   setSyncStatus('');
@@ -1183,31 +1258,82 @@ async function deleteReminder(id) {
 }
 
 // ─── SETTINGS ─────────────────────────────────────────────
-function showSettings() {
+async function showSettings() {
   closeUserMenu();
+  const pushStatus = await getPushStatus();
+  const pushOn = pushStatus === 'on';
+  const pushUnsupported = pushStatus === 'unsupported';
+  const pushDenied = pushStatus === 'denied';
+
   const modal = document.createElement('div');
   modal.className = 'modal-bg open';
   modal.id = 'settings-modal';
   const defaults = getDefaultAlerts();
   modal.innerHTML = `<div class="modal">
     <div class="modal-title">Settings</div>
-    <div class="card-title" style="font-size:15px;margin-bottom:12px">Default alert schedule</div>
-    <p style="font-size:13px;color:var(--ink-light);margin-bottom:10px">Pre-selected when you add a reminder.</p>
-    <div class="alert-options" id="settings-default-alerts">
-      ${[30,7,3,1,0].map(v => `
-        <label class="alert-chip ${defaults.includes(v)?'checked':''}" onclick="toggleChip(this,event);saveDefaultAlerts()">
-          <input type="checkbox" value="${v}" ${defaults.includes(v)?'checked':''}> <span class="dot"></span>
-          ${v==30?'1 month before':v==7?'1 week before':v==3?'3 days before':v==1?'1 day before':'On the day'}
-        </label>`).join('')}
+
+    <div style="margin-bottom:20px">
+      <div class="card-title" style="font-size:15px;margin-bottom:6px">Push notifications</div>
+      <p style="font-size:13px;color:var(--ink-light);margin-bottom:12px">
+        Get notified on your phone when reminders are due — even when the app is closed.
+      </p>
+      ${pushUnsupported ? `<div style="font-size:13px;color:var(--ink-faint)">Not supported on this browser. Use Chrome on Android or add to home screen on iPhone.</div>` :
+        pushDenied ? `<div style="font-size:13px;color:#DC2626">Notifications blocked. Go to your browser settings and allow notifications for this site.</div>` :
+        `<div class="toggle-row email-toggle ${pushOn?'active':''}" onclick="togglePushNotifications(this)">
+          <div class="toggle-switch"></div>
+          <div><div class="toggle-label">${pushOn ? 'Push notifications on' : 'Enable push notifications'}</div>
+          <div class="toggle-sub">${pushOn ? 'You\'ll get notified when reminders are due' : 'Tap to turn on'}</div></div>
+        </div>`}
     </div>
-    <div style="margin-top:20px">
-      <button class="btn btn-ghost btn-sm" onclick="showAdminSettings()">Admin settings (PIN)</button>
+
+    <div style="border-top:1px solid var(--border);padding-top:16px;margin-bottom:16px">
+      <div class="card-title" style="font-size:15px;margin-bottom:6px">Default alert schedule</div>
+      <p style="font-size:13px;color:var(--ink-light);margin-bottom:10px">Pre-selected when you add a reminder.</p>
+      <div class="alert-options" id="settings-default-alerts">
+        ${[30,7,3,1,0].map(v => `
+          <label class="alert-chip ${defaults.includes(v)?'checked':''}" onclick="toggleChip(this,event);saveDefaultAlerts()">
+            <input type="checkbox" value="${v}" ${defaults.includes(v)?'checked':''}> <span class="dot"></span>
+            ${v==30?'1 month before':v==7?'1 week before':v==3?'3 days before':v==1?'1 day before':'On the day'}
+          </label>`).join('')}
+      </div>
     </div>
+
+    <div style="border-top:1px solid var(--border);padding-top:16px">
+      <button class="btn btn-ghost btn-sm" onclick="showAdminSettings()">Admin settings (PIN protected)</button>
+    </div>
+
     <div class="modal-actions">
       <button class="btn btn-primary" onclick="document.getElementById('settings-modal').remove()">Done</button>
     </div>
   </div>`;
   document.body.appendChild(modal);
+}
+
+async function togglePushNotifications(el) {
+  const isOn = el.classList.contains('active');
+  const label = el.querySelector('.toggle-label');
+  const sub = el.querySelector('.toggle-sub');
+  label.textContent = 'Working…';
+  if (isOn) {
+    const ok = await unregisterPush();
+    if (ok) {
+      el.classList.remove('active');
+      label.textContent = 'Enable push notifications';
+      sub.textContent = 'Tap to turn on';
+      showToast('Push notifications disabled');
+    }
+  } else {
+    const ok = await registerPush();
+    if (ok) {
+      el.classList.add('active');
+      label.textContent = 'Push notifications on';
+      sub.textContent = "You'll get notified when reminders are due";
+      showToast('Push notifications enabled!', 'success');
+    } else {
+      label.textContent = 'Enable push notifications';
+      sub.textContent = 'Tap to turn on';
+    }
+  }
 }
 
 function showAdminSettings() {
