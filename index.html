@@ -416,34 +416,27 @@ async function init() {
 
 async function ensureProfile() {
   if (!currentUser) return;
-  const { data: p } = await sb.from('profiles').select('id').eq('id', currentUser.id).single();
-  if (!p) {
-    const name = currentUser.user_metadata?.full_name || currentUser.email.split('@')[0];
-    await sb.from('profiles').upsert({
-      id: currentUser.id,
-      name,
-      email: currentUser.email
-    });
+  try {
+    const { data: p } = await sb.from('profiles').select('id').eq('id', currentUser.id).maybeSingle();
+    if (!p) {
+      const name = currentUser.user_metadata?.full_name || currentUser.email.split('@')[0];
+      await sb.from('profiles').insert({ id: currentUser.id, name, email: currentUser.email });
+    }
+  } catch(e) {
+    console.warn('ensureProfile error (non-fatal):', e.message);
   }
 }
 
 async function loadAll() {
   try {
-    console.log('loadAll: ensuring profile...');
-    await ensureProfile();
-    console.log('loadAll: profile done, loading memberships...');
-
-    const { data: p } = await sb.from('profiles').select('*').eq('id', currentUser.id).single();
-    currentProfile = p;
-    console.log('loadAll: profile loaded:', p?.name);
-
+    console.log('loadAll: loading memberships...');
     const { data: mships, error: me } = await sb.from('family_memberships')
       .select('*, families(*)')
       .eq('user_id', currentUser.id)
       .eq('status', 'approved');
     if (me) console.error('memberships error:', me);
     families = mships || [];
-    console.log('loadAll: families loaded:', families.length);
+    console.log('loadAll: families:', families.length);
 
     if (activeTab !== 'private' && !families.find(m => m.family_id === activeTab)) {
       activeTab = families.length ? families[0].family_id : 'private';
@@ -452,10 +445,9 @@ async function loadAll() {
     const { data: r, error: re } = await sb.from('reminders').select('*').order('due_date');
     if (re) console.error('reminders error:', re);
     allReminders = r || [];
-    console.log('loadAll: reminders loaded:', allReminders.length);
+    console.log('loadAll: reminders:', allReminders.length);
 
     for (const m of families) {
-      console.log('loadAll: loading members for family:', m.family_id);
       const { data: fms } = await sb.from('family_memberships')
         .select('id, user_id, role, status, family_id')
         .eq('family_id', m.family_id)
@@ -471,7 +463,15 @@ async function loadAll() {
         familyMembers[m.family_id] = [];
       }
     }
-    console.log('loadAll: complete');
+
+    // Load own profile last (non-blocking)
+    const { data: p } = await sb.from('profiles').select('*').eq('id', currentUser.id).maybeSingle();
+    currentProfile = p;
+    if (!p) {
+      const name = currentUser.user_metadata?.full_name || currentUser.email.split('@')[0];
+      sb.from('profiles').insert({ id: currentUser.id, name, email: currentUser.email }).then(() => {});
+    }
+    console.log('loadAll: complete, profile:', p?.name);
   } catch(e) {
     console.error('loadAll error:', e);
   }
