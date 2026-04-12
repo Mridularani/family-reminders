@@ -469,24 +469,27 @@ async function loadAll() {
 // ─── REALTIME ────────────────────────────────────────────
 function subscribeRealtime() {
   if (channel) sb.removeChannel(channel);
-  // Small delay to ensure auth lock is released before subscribing
   setTimeout(() => {
     channel = sb.channel('changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'reminders' }, async () => {
         const { data } = await sb.from('reminders').select('*').order('due_date');
         allReminders = data || [];
-        renderReminderList();
-        renderApp(); // refresh tab badges too
+        renderApp();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'family_memberships' }, async () => {
         await loadAll();
         renderApp();
       })
-      .subscribe(s => {
-        setSyncStatus(s === 'SUBSCRIBED' ? 'live' : 'error');
-        if (s === 'SUBSCRIBED') console.log('Realtime connected');
-      });
+      .subscribe(s => setSyncStatus(s === 'SUBSCRIBED' ? 'live' : 'error'));
   }, 2000);
+
+  // Fallback polling every 10 seconds in case realtime doesn't fire
+  if (window._pollInterval) clearInterval(window._pollInterval);
+  window._pollInterval = setInterval(async () => {
+    if (!currentUser) return;
+    const { data } = await sb.from('reminders').select('*').order('due_date');
+    if (data) { allReminders = data; renderReminderList(); }
+  }, 10000);
 }
 
 function setSyncStatus(state) {
@@ -1160,13 +1163,23 @@ async function saveReminder() {
 
   btn.disabled = false; btn.textContent = 'Save';
   if (error) return showToast('Error saving: ' + error.message, 'error');
+
+  // Reload fresh data
+  const { data: fresh } = await sb.from('reminders').select('*').order('due_date');
+  if (fresh) allReminders = fresh;
+
   closeReminderModal();
+  // renderApp rebuilds the shell, renderCurrentTab rebuilds the content inside it
+  renderApp();
   showToast(editId ? 'Updated!' : 'Reminder saved!', 'success');
 }
 
 async function deleteReminder(id) {
   if (!confirm('Delete this reminder?')) return;
   await sb.from('reminders').delete().eq('id', id);
+  const { data: fresh } = await sb.from('reminders').select('*').order('due_date');
+  if (fresh) allReminders = fresh;
+  renderApp();
 }
 
 // ─── SETTINGS ─────────────────────────────────────────────
