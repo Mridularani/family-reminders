@@ -353,7 +353,18 @@ textarea { resize: vertical; min-height: 68px; }
 const SUPABASE_URL  = 'https://vbeztitzdnzfwmlfiatt.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZiZXp0aXR6ZG56ZndtbGZpYXR0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2MzkyMDEsImV4cCI6MjA5MTIxNTIwMX0.E9WOu9ctreqcfJBSpnHkjtssWWmOvE__7skbpSDN2WY';
 
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+// Wait for supabase to be available
+let sb;
+function initSupabase() {
+  if (typeof supabase === 'undefined') {
+    console.error('Supabase library not loaded');
+    return false;
+  }
+  sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
+    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+  });
+  return true;
+}
 
 let currentUser   = null;
 let currentProfile = null;
@@ -366,38 +377,42 @@ let channel       = null;
 
 // ─── INIT ────────────────────────────────────────────────
 async function init() {
-  console.log('init started, hash:', window.location.hash?.substring(0,30));
+  console.log('init started');
 
-  // Handle magic link / OAuth callback — session comes in the URL hash
-  if (window.location.hash && window.location.hash.includes('access_token')) {
-    console.log('magic link detected');
-    const { data, error } = await sb.auth.getSession();
-    console.log('session from hash:', data?.session?.user?.email, error);
-    if (data?.session) {
-      currentUser = data.session.user;
-      window.history.replaceState({}, document.title, window.location.pathname);
-      await loadAll();
-      if (!families.length) renderOnboarding();
-      else renderApp();
-      subscribeRealtime();
-      return;
-    }
+  if (!initSupabase()) {
+    document.getElementById('main-container').innerHTML = `<div class="loading-screen"><div style="color:#DC2626">Failed to load. Please refresh.</div></div>`;
+    return;
   }
 
-  console.log('checking existing session');
-  const { data: sessionData, error: sessionError } = await sb.auth.getSession();
-  console.log('session result:', JSON.stringify({ 
-    hasSession: !!sessionData?.session, 
-    email: sessionData?.session?.user?.email,
-    error: sessionError?.message 
-  }));
-  const session = sessionData?.session;
-  if (!session) { console.log('no session, showing auth'); renderAuth(); return; }
-  currentUser = session.user;
-  console.log('loading data...');
+  console.log('supabase ready, getting session...');
+
+  // Add timeout so we don't hang forever
+  const sessionPromise = sb.auth.getSession();
+  const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000));
+
+  let sessionData;
+  try {
+    const result = await Promise.race([sessionPromise, timeoutPromise]);
+    sessionData = result.data;
+    console.log('session result:', !!sessionData?.session, sessionData?.session?.user?.email);
+  } catch(e) {
+    console.error('Session error:', e.message);
+    renderAuth();
+    return;
+  }
+
+  if (!sessionData?.session) {
+    console.log('no session, showing auth');
+    renderAuth();
+    return;
+  }
+
+  currentUser = sessionData.session.user;
+  console.log('user:', currentUser.email, '— loading data...');
   await loadAll();
   console.log('families:', families.length, 'reminders:', allReminders.length);
-  renderApp();
+  if (!families.length && !allReminders.length) renderOnboarding();
+  else renderApp();
   subscribeRealtime();
 }
 
@@ -1251,22 +1266,26 @@ function showToast(msg, type='') {
   clearTimeout(t._t); t._t = setTimeout(()=> t.className = '', 3200);
 }
 
-// ─── AUTH LISTENER ────────────────────────────────────────
-sb.auth.onAuthStateChange(async (event, session) => {
-  if (event === 'SIGNED_IN' && session && !currentUser) {
-    currentUser = session.user;
-    // Ensure profile exists
-    const { data: p } = await sb.from('profiles').select('*').eq('id', currentUser.id).single();
-    if (!p) {
-      await sb.from('profiles').insert({ id: currentUser.id, name: currentUser.email.split('@')[0], email: currentUser.email });
-    }
-    await loadAll();
-    if (!families.length) renderOnboarding();
-    else { renderApp(); subscribeRealtime(); }
-  }
-});
+// ─── AUTH LISTENER & START ────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  if (!initSupabase()) return;
 
-init();
+  sb.auth.onAuthStateChange(async (event, session) => {
+    console.log('auth state change:', event, session?.user?.email);
+    if (event === 'SIGNED_IN' && session && !currentUser) {
+      currentUser = session.user;
+      await loadAll();
+      if (!families.length) renderOnboarding();
+      else { renderApp(); subscribeRealtime(); }
+    }
+    if (event === 'SIGNED_OUT') {
+      currentUser = null; currentProfile = null; families = []; allReminders = [];
+      renderAuth();
+    }
+  });
+
+  init();
+});
 </script>
 </body>
 </html>
