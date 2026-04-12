@@ -385,9 +385,14 @@ async function init() {
   }
 
   console.log('checking existing session');
-  const { data: { session }, error } = await sb.auth.getSession();
-  console.log('session:', session?.user?.email, 'error:', error);
-  if (!session) { renderAuth(); return; }
+  const { data: sessionData, error: sessionError } = await sb.auth.getSession();
+  console.log('session result:', JSON.stringify({ 
+    hasSession: !!sessionData?.session, 
+    email: sessionData?.session?.user?.email,
+    error: sessionError?.message 
+  }));
+  const session = sessionData?.session;
+  if (!session) { console.log('no session, showing auth'); renderAuth(); return; }
   currentUser = session.user;
   console.log('loading data...');
   await loadAll();
