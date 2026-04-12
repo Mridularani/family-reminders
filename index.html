@@ -393,6 +393,8 @@ async function init() {
     if (event === 'SIGNED_IN' && session) {
       if (currentUser?.id === session.user.id) return; // already loaded
       currentUser = session.user;
+      // Small delay to let Supabase release the auth lock before making DB calls
+      await new Promise(resolve => setTimeout(resolve, 500));
       await loadAll();
       console.log('families:', families.length, 'reminders:', allReminders.length);
       if (!families.length && !allReminders.length) renderOnboarding();
