@@ -378,40 +378,37 @@ async function init() {
   if (!initSupabase()) return;
   console.log('supabase ready, waiting for auth...');
 
-  // Set a fallback — if no auth event fires in 5 seconds, show sign in
-  const fallback = setTimeout(() => {
-    if (!currentUser) {
-      console.log('no auth event, showing sign in');
-      renderAuth();
-    }
-  }, 5000);
+  // Wait for Supabase to fully initialize before any calls
+  await new Promise(resolve => setTimeout(resolve, 1500));
 
+  // Try to get session up to 5 times
+  let session = null;
+  for (let i = 0; i < 5; i++) {
+    try {
+      const { data } = await sb.auth.getSession();
+      if (data?.session) { session = data.session; break; }
+    } catch(e) {
+      console.log(`attempt ${i+1} failed:`, e.message);
+    }
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+
+  console.log('session found:', !!session, session?.user?.email);
+
+  if (!session) { renderAuth(); return; }
+
+  currentUser = session.user;
+  await loadAll();
+  console.log('families:', families.length, 'reminders:', allReminders.length);
+  if (!families.length && !allReminders.length) renderOnboarding();
+  else renderApp();
+  subscribeRealtime();
+
+  // Handle future sign in/out
   sb.auth.onAuthStateChange(async (event, session) => {
-    console.log('auth state change:', event, session?.user?.email);
-    clearTimeout(fallback);
-
-    if (event === 'SIGNED_IN' && session) {
-      if (currentUser?.id === session.user.id) return; // already loaded
-      currentUser = session.user;
-      // Small delay to let Supabase release the auth lock before making DB calls
-      await new Promise(resolve => setTimeout(resolve, 500));
-      await loadAll();
-      console.log('families:', families.length, 'reminders:', allReminders.length);
-      if (!families.length && !allReminders.length) renderOnboarding();
-      else renderApp();
-      subscribeRealtime();
-    }
-
     if (event === 'SIGNED_OUT') {
       currentUser = null; currentProfile = null; families = []; allReminders = [];
       renderAuth();
-    }
-
-    if (event === 'INITIAL_SESSION') {
-      if (!session) {
-        clearTimeout(fallback);
-        renderAuth();
-      }
     }
   });
 }
@@ -584,8 +581,10 @@ async function submitAuth() {
 
   currentUser = result.data.user || result.data.session?.user;
   if (authMode === 'signup') {
-    showToast('Account created! Check your email to verify.', 'success');
+    showToast('Account created!', 'success');
   }
+  // Wait for auth lock to release before DB calls
+  await new Promise(resolve => setTimeout(resolve, 1500));
   await loadAll();
   if (!families.length) {
     renderOnboarding();
