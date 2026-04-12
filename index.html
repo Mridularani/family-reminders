@@ -375,42 +375,43 @@ let channel       = null;
 // ─── INIT ────────────────────────────────────────────────
 async function init() {
   console.log('init started');
+  if (!initSupabase()) return;
+  console.log('supabase ready, waiting for auth...');
 
-  if (!initSupabase()) {
-    document.getElementById('main-container').innerHTML = `<div class="loading-screen"><div style="color:#DC2626">Failed to load. Please refresh.</div></div>`;
-    return;
-  }
+  // Set a fallback — if no auth event fires in 5 seconds, show sign in
+  const fallback = setTimeout(() => {
+    if (!currentUser) {
+      console.log('no auth event, showing sign in');
+      renderAuth();
+    }
+  }, 5000);
 
-  console.log('supabase ready, getting session...');
+  sb.auth.onAuthStateChange(async (event, session) => {
+    console.log('auth state change:', event, session?.user?.email);
+    clearTimeout(fallback);
 
-  // Add timeout so we don't hang forever
-  const sessionPromise = sb.auth.getSession();
-  const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000));
+    if (event === 'SIGNED_IN' && session) {
+      if (currentUser?.id === session.user.id) return; // already loaded
+      currentUser = session.user;
+      await loadAll();
+      console.log('families:', families.length, 'reminders:', allReminders.length);
+      if (!families.length && !allReminders.length) renderOnboarding();
+      else renderApp();
+      subscribeRealtime();
+    }
 
-  let sessionData;
-  try {
-    const result = await Promise.race([sessionPromise, timeoutPromise]);
-    sessionData = result.data;
-    console.log('session result:', !!sessionData?.session, sessionData?.session?.user?.email);
-  } catch(e) {
-    console.error('Session error:', e.message);
-    renderAuth();
-    return;
-  }
+    if (event === 'SIGNED_OUT') {
+      currentUser = null; currentProfile = null; families = []; allReminders = [];
+      renderAuth();
+    }
 
-  if (!sessionData?.session) {
-    console.log('no session, showing auth');
-    renderAuth();
-    return;
-  }
-
-  currentUser = sessionData.session.user;
-  console.log('user:', currentUser.email, '— loading data...');
-  await loadAll();
-  console.log('families:', families.length, 'reminders:', allReminders.length);
-  if (!families.length && !allReminders.length) renderOnboarding();
-  else renderApp();
-  subscribeRealtime();
+    if (event === 'INITIAL_SESSION') {
+      if (!session) {
+        clearTimeout(fallback);
+        renderAuth();
+      }
+    }
+  });
 }
 
 async function ensureProfile() {
@@ -1297,26 +1298,8 @@ function showToast(msg, type='') {
   clearTimeout(t._t); t._t = setTimeout(()=> t.className = '', 3200);
 }
 
-// ─── AUTH LISTENER & START ────────────────────────────────
-document.addEventListener('DOMContentLoaded', () => {
-  if (!initSupabase()) return;
-
-  sb.auth.onAuthStateChange(async (event, session) => {
-    console.log('auth state change:', event, session?.user?.email);
-    if (event === 'SIGNED_IN' && session && !currentUser) {
-      currentUser = session.user;
-      await loadAll();
-      if (!families.length) renderOnboarding();
-      else { renderApp(); subscribeRealtime(); }
-    }
-    if (event === 'SIGNED_OUT') {
-      currentUser = null; currentProfile = null; families = []; allReminders = [];
-      renderAuth();
-    }
-  });
-
-  init();
-});
+// ─── START ────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => { init(); });
 </script>
 </body>
 </html>
