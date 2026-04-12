@@ -469,17 +469,24 @@ async function loadAll() {
 // ─── REALTIME ────────────────────────────────────────────
 function subscribeRealtime() {
   if (channel) sb.removeChannel(channel);
-  channel = sb.channel('changes')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'reminders' }, async () => {
-      const { data } = await sb.from('reminders').select('*').order('due_date');
-      allReminders = data || [];
-      renderReminderList();
-    })
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'family_memberships' }, async () => {
-      await loadAll();
-      renderApp();
-    })
-    .subscribe(s => setSyncStatus(s === 'SUBSCRIBED' ? 'live' : 'error'));
+  // Small delay to ensure auth lock is released before subscribing
+  setTimeout(() => {
+    channel = sb.channel('changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reminders' }, async () => {
+        const { data } = await sb.from('reminders').select('*').order('due_date');
+        allReminders = data || [];
+        renderReminderList();
+        renderApp(); // refresh tab badges too
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'family_memberships' }, async () => {
+        await loadAll();
+        renderApp();
+      })
+      .subscribe(s => {
+        setSyncStatus(s === 'SUBSCRIBED' ? 'live' : 'error');
+        if (s === 'SUBSCRIBED') console.log('Realtime connected');
+      });
+  }, 2000);
 }
 
 function setSyncStatus(state) {
