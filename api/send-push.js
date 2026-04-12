@@ -15,6 +15,25 @@ export default async function handler(req, res) {
   const { data: subscriptions } = await sb.from('push_subscriptions').select('*');
   if (!subscriptions?.length) return res.status(200).json({ sent: 0, message: 'No subscriptions' });
 
+  // Test mode — send a test notification to all subscribers
+  if (req.query?.test === '1') {
+    let sent = 0;
+    for (const sub of subscriptions) {
+      try {
+        await webpush.sendNotification(sub.subscription, JSON.stringify({
+          title: 'Family Reminders — test notification!',
+          body: 'Push notifications are working correctly.',
+          tag: 'test',
+          url: '/'
+        }));
+        sent++;
+      } catch(e) {
+        console.error('Test push failed:', e.statusCode, e.message);
+      }
+    }
+    return res.status(200).json({ sent, message: 'Test notification sent' });
+  }
+
   const { data: reminders } = await sb.from('reminders').select('*');
   if (!reminders?.length) return res.status(200).json({ sent: 0, message: 'No reminders' });
 
