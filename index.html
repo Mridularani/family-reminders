@@ -429,37 +429,37 @@ async function ensureProfile() {
 
 async function loadAll() {
   try {
-    // Always ensure profile exists
+    console.log('loadAll: ensuring profile...');
     await ensureProfile();
+    console.log('loadAll: profile done, loading memberships...');
 
-    // Load profile
     const { data: p } = await sb.from('profiles').select('*').eq('id', currentUser.id).single();
     currentProfile = p;
+    console.log('loadAll: profile loaded:', p?.name);
 
-    // Load family memberships (approved)
-    const { data: mships } = await sb.from('family_memberships')
+    const { data: mships, error: me } = await sb.from('family_memberships')
       .select('*, families(*)')
       .eq('user_id', currentUser.id)
       .eq('status', 'approved');
+    if (me) console.error('memberships error:', me);
     families = mships || [];
+    console.log('loadAll: families loaded:', families.length);
 
-    // Set default active tab
     if (activeTab !== 'private' && !families.find(m => m.family_id === activeTab)) {
       activeTab = families.length ? families[0].family_id : 'private';
     }
 
-    // Load all reminders visible to this user
     const { data: r, error: re } = await sb.from('reminders').select('*').order('due_date');
-    if (re) console.error('Reminders error:', re);
+    if (re) console.error('reminders error:', re);
     allReminders = r || [];
+    console.log('loadAll: reminders loaded:', allReminders.length);
 
-    // Load members for each family — fetch memberships then profiles separately
     for (const m of families) {
+      console.log('loadAll: loading members for family:', m.family_id);
       const { data: fms } = await sb.from('family_memberships')
         .select('id, user_id, role, status, family_id')
         .eq('family_id', m.family_id)
         .eq('status', 'approved');
-
       if (fms?.length) {
         const userIds = fms.map(f => f.user_id);
         const { data: profs } = await sb.from('profiles').select('*').in('id', userIds);
@@ -471,6 +471,7 @@ async function loadAll() {
         familyMembers[m.family_id] = [];
       }
     }
+    console.log('loadAll: complete');
   } catch(e) {
     console.error('loadAll error:', e);
   }
