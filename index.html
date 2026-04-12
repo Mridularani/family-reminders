@@ -526,9 +526,17 @@ async function registerPush() {
       applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
     });
 
-    await sb.from('push_subscriptions').upsert({
+    const subJson = sub.toJSON();
+    // Store per device using endpoint as unique identifier
+    // First delete any existing subscription for this endpoint
+    await sb.from('push_subscriptions')
+      .delete()
+      .eq('user_id', currentUser.id)
+      .like('subscription->>endpoint', subJson.endpoint);
+
+    await sb.from('push_subscriptions').insert({
       user_id: currentUser.id,
-      subscription: sub.toJSON()
+      subscription: subJson
     });
 
     return true;
@@ -544,9 +552,16 @@ async function unregisterPush() {
     const reg = await navigator.serviceWorker.getRegistration('/sw.js');
     if (reg) {
       const sub = await reg.pushManager.getSubscription();
-      if (sub) await sub.unsubscribe();
+      if (sub) {
+        const endpoint = sub.endpoint;
+        await sub.unsubscribe();
+        // Only delete this device's subscription
+        await sb.from('push_subscriptions')
+          .delete()
+          .eq('user_id', currentUser.id)
+          .like('subscription->>endpoint', endpoint);
+      }
     }
-    await sb.from('push_subscriptions').delete().eq('user_id', currentUser.id);
     return true;
   } catch(e) {
     console.error('Push unregister error:', e);
