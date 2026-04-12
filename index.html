@@ -366,6 +366,21 @@ let channel       = null;
 
 // ─── INIT ────────────────────────────────────────────────
 async function init() {
+  // Handle magic link / OAuth callback — session comes in the URL hash
+  if (window.location.hash && window.location.hash.includes('access_token')) {
+    const { data, error } = await sb.auth.getSession();
+    if (data?.session) {
+      currentUser = data.session.user;
+      // Clean the URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+      await loadAll();
+      if (!families.length) renderOnboarding();
+      else renderApp();
+      subscribeRealtime();
+      return;
+    }
+  }
+
   const { data: { session } } = await sb.auth.getSession();
   if (!session) { renderAuth(); return; }
   currentUser = session.user;
@@ -388,31 +403,41 @@ async function ensureProfile() {
 }
 
 async function loadAll() {
-  // Always ensure profile exists
-  await ensureProfile();
+  try {
+    // Always ensure profile exists
+    await ensureProfile();
 
-  // Load profile
-  const { data: p } = await sb.from('profiles').select('*').eq('id', currentUser.id).single();
-  currentProfile = p;
+    // Load profile
+    const { data: p } = await sb.from('profiles').select('*').eq('id', currentUser.id).single();
+    currentProfile = p;
 
-  // Load family memberships (approved)
-  const { data: mships } = await sb.from('family_memberships')
-    .select('*, families(*)')
-    .eq('user_id', currentUser.id)
-    .eq('status', 'approved');
-  families = mships || [];
-
-  // Load all reminders visible to this user
-  const { data: r } = await sb.from('reminders').select('*').order('due_date');
-  allReminders = r || [];
-
-  // Load members for each family
-  for (const m of families) {
-    const { data: fms } = await sb.from('family_memberships')
-      .select('*, profiles(*)')
-      .eq('family_id', m.family_id)
+    // Load family memberships (approved)
+    const { data: mships } = await sb.from('family_memberships')
+      .select('*, families(*)')
+      .eq('user_id', currentUser.id)
       .eq('status', 'approved');
-    familyMembers[m.family_id] = fms || [];
+    families = mships || [];
+
+    // Set default active tab
+    if (activeTab !== 'private' && !families.find(m => m.family_id === activeTab)) {
+      activeTab = families.length ? families[0].family_id : 'private';
+    }
+
+    // Load all reminders visible to this user
+    const { data: r, error: re } = await sb.from('reminders').select('*').order('due_date');
+    if (re) console.error('Reminders error:', re);
+    allReminders = r || [];
+
+    // Load members for each family
+    for (const m of families) {
+      const { data: fms } = await sb.from('family_memberships')
+        .select('*, profiles(*)')
+        .eq('family_id', m.family_id)
+        .eq('status', 'approved');
+      familyMembers[m.family_id] = fms || [];
+    }
+  } catch(e) {
+    console.error('loadAll error:', e);
   }
 }
 
@@ -493,15 +518,29 @@ async function submitAuth() {
     const name = document.getElementById('auth-name').value.trim() || email.split('@')[0];
     result = await sb.auth.signUp({ email, password: pass });
     if (!result.error && result.data.user) {
+      // Try to create profile immediately
       await sb.from('profiles').upsert({ id: result.data.user.id, name, email });
     }
   }
 
   btn.disabled = false;
   if (result.error) {
-    errEl.textContent = result.error.message;
+    let msg = result.error.message;
+    if (msg.includes('Email not confirmed')) msg = 'Please check your email and click the confirmation link first, then sign in.';
+    if (msg.includes('Invalid login')) msg = 'Incorrect email or password.';
+    errEl.textContent = msg;
     errEl.style.display = 'block';
     btn.textContent = authMode === 'login' ? 'Sign in' : 'Create account';
+    return;
+  }
+
+  // Check if email confirmation is still needed (signup returns user but no session)
+  if (authMode === 'signup' && !result.data.session) {
+    errEl.style.color = '#15803D';
+    errEl.textContent = 'Account created! Check your email for a confirmation link, then come back and sign in.';
+    errEl.style.display = 'block';
+    btn.textContent = 'Create account';
+    btn.disabled = false;
     return;
   }
 
