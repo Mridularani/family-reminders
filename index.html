@@ -527,17 +527,26 @@ async function registerPush() {
     });
 
     const subJson = sub.toJSON();
-    // Store per device using endpoint as unique identifier
-    // First delete any existing subscription for this endpoint
-    await sb.from('push_subscriptions')
-      .delete()
-      .eq('user_id', currentUser.id)
-      .like('subscription->>endpoint', subJson.endpoint);
+    const { data: savedSubs } = await sb.from('push_subscriptions')
+      .select('id, subscription')
+      .eq('user_id', currentUser.id);
 
-    await sb.from('push_subscriptions').insert({
+    for (const row of (savedSubs || [])) {
+      if (row.subscription?.endpoint === subJson.endpoint) {
+        await sb.from('push_subscriptions').delete().eq('id', row.id);
+      }
+    }
+
+    const { error: insertError } = await sb.from('push_subscriptions').insert({
       user_id: currentUser.id,
       subscription: subJson
     });
+
+    if (insertError) {
+      console.error('Push insert error:', insertError);
+      showToast('Could not save subscription: ' + insertError.message, 'error');
+      return false;
+    }
 
     return true;
   } catch(e) {
