@@ -21,6 +21,7 @@
   --ink-faint: #A8A29E; --accent: #C2410C; --accent-light: #FEF3EC; --accent-mid: #EA580C;
   --green: #15803D; --green-light: #F0FDF4; --border: #E7E2DA;
   --shadow: 0 1px 3px rgba(28,25,23,0.08); --shadow-lg: 0 4px 24px rgba(28,25,23,0.10);
+  --blue: #1D4ED8; --blue-light: #EFF6FF;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: 'DM Sans', sans-serif; background: var(--cream); color: var(--ink); min-height: 100vh; font-size: 15px; }
@@ -64,6 +65,30 @@ header { background: var(--warm-white); border-bottom: 1px solid var(--border); 
 .main-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
 .main-tab:hover:not(.active) { color: var(--ink-light); }
 .main-tab .badge { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; background: var(--accent-light); color: var(--accent); font-size: 10px; font-weight: 600; margin-left: 6px; }
+.main-tab-divider { width: 1px; background: var(--border); margin: 8px 4px; flex-shrink: 0; }
+.main-tab.log-tab.active { color: var(--blue); border-bottom-color: var(--blue); }
+
+/* ── Search bar ── */
+.search-bar { position: relative; flex: 1; max-width: 340px; }
+.search-bar input { width: 100%; padding: 9px 13px 9px 36px; border: 1px solid var(--border); border-radius: 20px; font-family: 'DM Sans', sans-serif; font-size: 14px; background: var(--warm-white); color: var(--ink); outline: none; transition: border-color 0.15s; }
+.search-bar input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(29,78,216,0.08); }
+.search-bar::before { content: '🔍'; position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: 13px; pointer-events: none; }
+
+/* ── Log items ── */
+.log-item { background: var(--warm-white); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 10px; overflow: hidden; transition: box-shadow 0.15s; }
+.log-item:hover { box-shadow: var(--shadow-lg); }
+.log-summary { display: flex; align-items: center; gap: 12px; padding: 14px 16px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.log-date-badge { background: var(--blue-light); color: var(--blue); border-radius: 8px; padding: 6px 10px; text-align: center; min-width: 46px; flex-shrink: 0; }
+.log-date-badge .day { font-family: 'Lora', serif; font-size: 20px; font-weight: 600; line-height: 1; }
+.log-date-badge .month { font-size: 10px; font-weight: 500; text-transform: uppercase; margin-top: 1px; }
+.log-summary-body { flex: 1; min-width: 0; }
+.log-title { font-family: 'Lora', serif; font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.log-summary-meta { display: flex; align-items: center; gap: 6px; margin-top: 3px; flex-wrap: wrap; }
+.log-details { display: none; padding: 0 16px 14px; border-top: 1px solid var(--border); }
+.log-item.open .log-details { display: block; }
+.log-item.open .reminder-chevron { transform: rotate(180deg); }
+.btn-blue { background: var(--blue); color: #fff; }
+.btn-blue:hover { background: #1e40af; }
 
 /* ── Sub tabs (filter: Today, This week etc) ── */
 .filter-tabs { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
@@ -322,6 +347,40 @@ textarea { resize: vertical; min-height: 68px; }
   </div>
 </div>
 
+<!-- Add/Edit Log Modal -->
+<div class="modal-bg" id="log-modal">
+  <div class="modal">
+    <div class="modal-title" id="log-modal-title">New log entry</div>
+    <input type="hidden" id="lm-id">
+    <input type="hidden" id="lm-visibility">
+    <input type="hidden" id="lm-family-id">
+    <div class="form-row"><label>What was done</label><input type="text" id="lm-title" placeholder="e.g. Typhoid vaccine, Car service, Blood test…"></div>
+    <div class="form-row-2">
+      <div class="form-row" style="margin-bottom:0"><label>Date it happened</label><input type="date" id="lm-date"></div>
+      <div class="form-row" style="margin-bottom:0"><label>Category</label>
+        <select id="lm-category" onchange="toggleLogCustomCat(this.value)">
+          <option value="health">Health / Medical</option>
+          <option value="vaccine">Vaccine</option>
+          <option value="vehicle">Vehicle</option>
+          <option value="home">Home</option>
+          <option value="finance">Finance</option>
+          <option value="other">Other</option>
+          <option value="custom">+ Custom…</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row" id="lm-custom-cat-row" style="display:none">
+      <label>Custom category name</label>
+      <input type="text" id="lm-custom-cat" placeholder="e.g. Pet, Garden, School…">
+    </div>
+    <div class="form-row"><label>Notes (optional)</label><textarea id="lm-notes" placeholder="Any details — doctor name, result, location, cost…"></textarea></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeLogModal()">Cancel</button>
+      <button class="btn btn-blue" id="lm-save-btn" onclick="saveLog()">Save entry</button>
+    </div>
+  </div>
+</div>
+
 <!-- Create Family Modal -->
 <div class="modal-bg" id="create-family-modal">
   <div class="modal">
@@ -364,14 +423,17 @@ function initSupabase() {
   return true;
 }
 
-let currentUser   = null;
+let currentUser    = null;
 let currentProfile = null;
-let families      = []; // memberships with family data
-let activeTab     = 'private'; // 'private' | family_id
-let currentFilter = 'week';
-let allReminders  = [];
-let familyMembers = {}; // family_id -> members array
-let channel       = null;
+let families       = [];
+let activeTab      = 'private';
+let activeLogTab   = 'private';
+let currentFilter  = 'week';
+let allReminders   = [];
+let allLogs        = [];
+let familyMembers  = {};
+let channel        = null;
+let logSearchQuery = '';
 
 // ─── INIT ────────────────────────────────────────────────
 async function init() {
@@ -429,13 +491,16 @@ async function loadAll() {
     // memberships loaded
     families = mships || [];
 
-    if (activeTab !== 'private' && !families.find(m => m.family_id === activeTab)) {
+    if (activeTab !== 'private' && activeTab !== 'log' && !families.find(m => m.family_id === activeTab)) {
       activeTab = families.length ? families[0].family_id : 'private';
     }
 
     const { data: r, error: re } = await sb.from('reminders').select('*').order('due_date');
     // reminders loaded
     allReminders = r || [];
+
+    const { data: l } = await sb.from('logs').select('*').order('date', { ascending: false });
+    allLogs = l || [];
 
     for (const m of families) {
       const { data: fms } = await sb.from('family_memberships')
@@ -770,6 +835,10 @@ function renderApp() {
     </button>`;
   }
 
+  // Divider + Log tab
+  tabsHtml += `<div class="main-tab-divider"></div>
+    <button class="main-tab log-tab ${activeTab==='log'?'active':''}" onclick="switchMainTab('log')">📋 Log</button>`;
+
   document.getElementById('main-container').innerHTML = `
     <div class="main-tabs" id="main-tabs">${tabsHtml}</div>
     <div id="tab-content"></div>`;
@@ -779,14 +848,14 @@ function renderApp() {
 
 function switchMainTab(tabId) {
   activeTab = tabId;
-  currentFilter = 'week';
-  // Update tab active state
+  if (tabId !== 'log') currentFilter = 'week';
   document.querySelectorAll('.main-tab').forEach(t => t.classList.remove('active'));
   event?.target?.classList.add('active');
   renderCurrentTab();
 }
 
 function renderCurrentTab() {
+  if (activeTab === 'log') { renderLogTab(); return; }
   const el = document.getElementById('tab-content');
   if (!el) return;
 
@@ -1452,6 +1521,169 @@ function closeUserMenu() {
 document.addEventListener('click', e => {
   if (!e.target.closest('#user-menu') && !e.target.closest('#user-avatar')) closeUserMenu();
 });
+
+// ─── LOG TAB ─────────────────────────────────────────────
+function renderLogTab() {
+  const el = document.getElementById('tab-content');
+  if (!el) return;
+  let logTabsHtml = `<button class="filter-tab ${activeLogTab==='private'?'active':''}" onclick="switchLogTab('private')">My log</button>`;
+  for (const m of families) {
+    logTabsHtml += `<button class="filter-tab ${activeLogTab===m.family_id?'active':''}" onclick="switchLogTab('${m.family_id}')">${esc(m.families?.name||'Family')}</button>`;
+  }
+  el.innerHTML = `
+    <div class="action-bar" style="flex-wrap:wrap;gap:10px;margin-bottom:12px">
+      <div class="filter-tabs" style="margin-bottom:0">${logTabsHtml}</div>
+      <button class="btn btn-blue btn-sm" onclick="openAddLog()">+ Add entry</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+      <div class="search-bar">
+        <input type="text" placeholder="Search log…" value="${esc(logSearchQuery)}" oninput="logSearchQuery=this.value;renderLogList()">
+      </div>
+    </div>
+    <div id="log-list"></div>`;
+  renderLogList();
+}
+
+function switchLogTab(tabId) {
+  activeLogTab = tabId;
+  renderLogTab();
+}
+
+function renderLogList() {
+  const el = document.getElementById('log-list');
+  if (!el) return;
+  const isPrivate = activeLogTab === 'private';
+  let entries = isPrivate
+    ? allLogs.filter(l => l.user_id === currentUser.id && l.visibility === 'private')
+    : allLogs.filter(l => l.family_id === activeLogTab && l.visibility === 'family');
+  if (logSearchQuery.trim()) {
+    const q = logSearchQuery.toLowerCase();
+    entries = entries.filter(l =>
+      l.title?.toLowerCase().includes(q) ||
+      l.notes?.toLowerCase().includes(q) ||
+      l.category?.toLowerCase().includes(q)
+    );
+  }
+  if (!entries.length) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">📋</div>
+      <h3>${logSearchQuery ? 'No entries match your search' : 'No log entries yet'}</h3>
+      <p>Tap + Add entry to record something</p></div>`;
+    return;
+  }
+  const catLabels = { health:'Health/Medical', vaccine:'Vaccine', vehicle:'Vehicle', home:'Home', finance:'Finance', other:'Other' };
+  const nowMs = Date.now();
+  el.innerHTML = entries.map(l => {
+    const d = new Date(l.date);
+    const day = d.getDate();
+    const mon = d.toLocaleString('en-IN', { month: 'short' }).toUpperCase();
+    const yr = d.getFullYear();
+    const currentYear = new Date().getFullYear();
+    const daysAgo = Math.floor((nowMs - d.getTime()) / 86400000);
+    const ageLabel = daysAgo === 0 ? 'Today' : daysAgo === 1 ? 'Yesterday' :
+      daysAgo < 30 ? `${daysAgo}d ago` : daysAgo < 365 ? `${Math.floor(daysAgo/30)}mo ago` : `${Math.floor(daysAgo/365)}yr ago`;
+    const catLabel = catLabels[l.category] || l.category || '';
+    const isOwner = l.user_id === currentUser.id;
+    const addedBy = !isPrivate && !isOwner ? (() => {
+      const fm = (familyMembers[activeLogTab]||[]).find(m => m.user_id === l.user_id);
+      return fm?.profiles?.name ? `<span class="tag tag-mine">${esc(fm.profiles.name)}</span>` : '';
+    })() : '';
+    return `<div class="log-item" id="li-${l.id}">
+      <div class="log-summary" onclick="toggleLogCard('${l.id}')">
+        <div class="log-date-badge"><div class="day">${day}</div><div class="month">${mon}${yr !== currentYear ? ' '+yr : ''}</div></div>
+        <div class="log-summary-body">
+          <div class="log-title">${esc(l.title)}</div>
+          <div class="log-summary-meta">
+            <span style="font-size:12px;color:var(--ink-faint)">${esc(catLabel)}</span>
+            <span style="font-size:12px;color:var(--ink-faint)">·</span>
+            <span style="font-size:12px;color:var(--blue);font-weight:500">${ageLabel}</span>
+            ${addedBy}
+          </div>
+        </div>
+        <div class="reminder-chevron">▼</div>
+      </div>
+      <div class="log-details">
+        ${l.notes ? `<div class="reminder-desc">${esc(l.notes)}</div>` : '<div style="height:8px"></div>'}
+        <div class="reminder-actions">
+          ${isOwner ? `<button class="btn btn-ghost btn-sm" onclick="openEditLog('${l.id}')">Edit</button>
+            <button class="btn btn-danger" onclick="deleteLog('${l.id}')">Delete</button>` : ''}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleLogCard(id) { const el = document.getElementById('li-'+id); if (el) el.classList.toggle('open'); }
+
+function openAddLog() {
+  document.getElementById('log-modal-title').textContent = activeLogTab === 'private' ? 'New private log entry' : 'New family log entry';
+  document.getElementById('lm-id').value = '';
+  document.getElementById('lm-visibility').value = activeLogTab === 'private' ? 'private' : 'family';
+  document.getElementById('lm-family-id').value = activeLogTab === 'private' ? '' : activeLogTab;
+  document.getElementById('lm-title').value = '';
+  document.getElementById('lm-date').value = new Date().toISOString().split('T')[0];
+  document.getElementById('lm-category').value = 'health';
+  document.getElementById('lm-custom-cat-row').style.display = 'none';
+  document.getElementById('lm-notes').value = '';
+  document.getElementById('log-modal').classList.add('open');
+  setTimeout(() => document.getElementById('lm-title')?.focus(), 100);
+}
+
+function openEditLog(id) {
+  const l = allLogs.find(x => x.id === id);
+  if (!l) return;
+  document.getElementById('log-modal-title').textContent = 'Edit log entry';
+  document.getElementById('lm-id').value = l.id;
+  document.getElementById('lm-visibility').value = l.visibility;
+  document.getElementById('lm-family-id').value = l.family_id || '';
+  document.getElementById('lm-title').value = l.title;
+  document.getElementById('lm-date').value = l.date;
+  document.getElementById('lm-category').value = l.category || 'other';
+  document.getElementById('lm-custom-cat-row').style.display = 'none';
+  document.getElementById('lm-notes').value = l.notes || '';
+  document.getElementById('log-modal').classList.add('open');
+}
+
+function closeLogModal() { document.getElementById('log-modal').classList.remove('open'); }
+function toggleLogCustomCat(v) { document.getElementById('lm-custom-cat-row').style.display = v === 'custom' ? 'block' : 'none'; }
+
+async function saveLog() {
+  const title = document.getElementById('lm-title').value.trim();
+  const date  = document.getElementById('lm-date').value;
+  if (!title) return showToast('Please enter a title', 'error');
+  if (!date)  return showToast('Please pick a date', 'error');
+  const catVal = document.getElementById('lm-category').value;
+  const category = catVal === 'custom' ? (document.getElementById('lm-custom-cat').value.trim() || 'Other') : catVal;
+  const familyId = document.getElementById('lm-family-id').value || null;
+  const editId = document.getElementById('lm-id').value;
+  const btn = document.getElementById('lm-save-btn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  const payload = {
+    title, date, category,
+    notes: document.getElementById('lm-notes').value.trim(),
+    visibility: document.getElementById('lm-visibility').value,
+    family_id: familyId,
+    user_id: currentUser.id
+  };
+  let error;
+  if (editId) { ({ error } = await sb.from('logs').update(payload).eq('id', editId)); }
+  else { ({ error } = await sb.from('logs').insert(payload)); }
+  btn.disabled = false; btn.textContent = 'Save entry';
+  if (error) return showToast('Error saving: ' + error.message, 'error');
+  const { data: fresh } = await sb.from('logs').select('*').order('date', { ascending: false });
+  if (fresh) allLogs = fresh;
+  closeLogModal();
+  renderLogTab();
+  showToast(editId ? 'Updated!' : 'Entry saved!', 'success');
+}
+
+async function deleteLog(id) {
+  if (!confirm('Delete this log entry?')) return;
+  await sb.from('logs').delete().eq('id', id);
+  const { data: fresh } = await sb.from('logs').select('*').order('date', { ascending: false });
+  if (fresh) allLogs = fresh;
+  renderLogList();
+  showToast('Entry deleted');
+}
 
 // ─── HELPERS ──────────────────────────────────────────────
 function toggleChip(el, e) { e.preventDefault(); el.classList.toggle('checked'); }
