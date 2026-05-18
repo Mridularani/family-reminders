@@ -1,6 +1,18 @@
 import webpush from 'web-push';
 import { createClient } from '@supabase/supabase-js';
 
+function getNextDueDate(currentDue, recurrence) {
+  const d = new Date(currentDue);
+  const r = recurrence;
+  if (!r) return null;
+  if (r.type === 'daily')   { d.setDate(d.getDate() + 1); }
+  if (r.type === 'days')    { d.setDate(d.getDate() + (r.every || 2)); }
+  if (r.type === 'weekly')  { d.setDate(d.getDate() + 7); }
+  if (r.type === 'monthly') { d.setMonth(d.getMonth() + 1); }
+  if (r.type === 'yearly')  { d.setFullYear(d.getFullYear() + 1); }
+  return d.toISOString().split('T')[0];
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'GET' && req.method !== 'POST') return res.status(405).end();
 
@@ -77,7 +89,14 @@ export default async function handler(req, res) {
       }
 
       const newSentAlerts = [...(r.sent_alerts || []), alertKey];
-      await sb.from('reminders').update({ sent_alerts: newSentAlerts }).eq('id', r.id);
+
+      // If day-of alert fired and reminder recurs, advance due date and reset alerts
+      if (offset === 0 && r.recurrence) {
+        const nextDue = getNextDueDate(r.due_date, r.recurrence);
+        await sb.from('reminders').update({ due_date: nextDue, sent_alerts: [] }).eq('id', r.id);
+      } else {
+        await sb.from('reminders').update({ sent_alerts: newSentAlerts }).eq('id', r.id);
+      }
     }
   }
 
