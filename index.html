@@ -314,7 +314,7 @@ textarea { resize: vertical; min-height: 68px; }
             </div>
           </div>
           <div>
-            <label style="font-size:12px">Time (IST)</label>
+            <label style="font-size:12px">Email time (IST)</label>
             <select id="rm-notify-time">
               <option value="06:00">6:00 AM</option>
               <option value="07:00">7:00 AM</option>
@@ -331,6 +331,31 @@ textarea { resize: vertical; min-height: 68px; }
         <div id="rm-recipients-row" style="display:none">
           <label style="font-size:12px">Notify</label>
           <div class="recipient-options" id="rm-recipients"></div>
+        </div>
+      </div>
+    </div>
+    <div class="form-row">
+      <label>Push notification time</label>
+      <div class="toggle-row email-toggle" id="rm-push-toggle" onclick="toggleRmPush(this)">
+        <div class="toggle-switch"></div>
+        <div><div class="toggle-label">Send push notification at a specific time</div><div class="toggle-sub">Off by default — fires on the due date at the chosen time.</div></div>
+      </div>
+      <div id="rm-push-opts" style="display:none;margin-top:12px">
+        <div class="form-row-2" style="margin-bottom:8px">
+          <div>
+            <label style="font-size:12px">When to push</label>
+            <div class="alert-options" id="rm-push-alerts">
+              <label class="alert-chip" onclick="toggleChip(this,event)"><input type="checkbox" value="30"> <span class="dot"></span> 1 month before</label>
+              <label class="alert-chip" onclick="toggleChip(this,event)"><input type="checkbox" value="7"> <span class="dot"></span> 1 week before</label>
+              <label class="alert-chip checked" onclick="toggleChip(this,event)"><input type="checkbox" value="3" checked> <span class="dot"></span> 3 days before</label>
+              <label class="alert-chip" onclick="toggleChip(this,event)"><input type="checkbox" value="1"> <span class="dot"></span> 1 day before</label>
+              <label class="alert-chip" onclick="toggleChip(this,event)"><input type="checkbox" value="0"> <span class="dot"></span> On the day</label>
+            </div>
+          </div>
+          <div>
+            <label style="font-size:12px">Push time (IST)</label>
+            <input type="time" id="rm-push-time" value="08:00" style="width:100%">
+          </div>
         </div>
       </div>
     </div>
@@ -1008,6 +1033,7 @@ function renderReminderList() {
         <div class="reminder-tags">
           ${statusTag}
           ${(r.alerts||[]).length ? `<span class="tag" style="background:#EDE9FE;color:#5B21B6">Email alerts on</span>${alertTags}` : ''}
+          ${(r.push_alerts||[]).length ? `<span class="tag" style="background:#E0F2FE;color:#0369A1">🔔 ${r.push_time || '08:00'} IST</span>` : ''}
           ${addedBy}
           ${r.auto_delete ? `<span class="tag tag-autodel">auto-delete after</span>` : ''}
           ${r.recurrence ? `<span class="tag" style="background:#E0F2FE;color:#0369A1">🔁 ${recurrenceLabel(r.recurrence)}</span>` : ''}
@@ -1252,6 +1278,17 @@ function openAddReminder() {
   document.getElementById('rm-custom-cat-row').style.display = 'none';
   document.getElementById('rm-email-toggle').classList.remove('active');
   document.getElementById('rm-email-opts').style.display = 'none';
+  // Reset push toggle
+  const pushTog = document.getElementById('rm-push-toggle');
+  if (pushTog) pushTog.classList.remove('active');
+  const pushOpts = document.getElementById('rm-push-opts');
+  if (pushOpts) pushOpts.style.display = 'none';
+  if (document.getElementById('rm-push-time')) document.getElementById('rm-push-time').value = '08:00';
+  document.querySelectorAll('#rm-push-alerts .alert-chip').forEach(c => {
+    const v = parseInt(c.querySelector('input').value);
+    c.classList.toggle('checked', v === 3);
+    c.querySelector('input').checked = v === 3;
+  });
   document.getElementById('rm-autodel-toggle').classList.remove('active');
   document.getElementById('rm-notify-time').value = '08:00';
   // Reset recurrence
@@ -1293,6 +1330,19 @@ function openEditReminder(id) {
   document.querySelectorAll('#rm-alerts .alert-chip').forEach(c => {
     const v = parseInt(c.querySelector('input').value);
     c.classList.toggle('checked', (r.alerts||[]).includes(v));
+  });
+
+  // Push settings
+  const hasPush = (r.push_alerts||[]).length > 0;
+  const pushTog = document.getElementById('rm-push-toggle');
+  const pushOpts = document.getElementById('rm-push-opts');
+  if (pushTog) pushTog.classList.toggle('active', hasPush);
+  if (pushOpts) pushOpts.style.display = hasPush ? 'block' : 'none';
+  if (document.getElementById('rm-push-time')) document.getElementById('rm-push-time').value = r.push_time || '08:00';
+  document.querySelectorAll('#rm-push-alerts .alert-chip').forEach(c => {
+    const v = parseInt(c.querySelector('input').value);
+    c.classList.toggle('checked', (r.push_alerts||[]).includes(v));
+    c.querySelector('input').checked = (r.push_alerts||[]).includes(v);
   });
 
   document.getElementById('rm-autodel-toggle').classList.toggle('active', !!r.auto_delete);
@@ -1343,6 +1393,11 @@ async function saveReminder() {
   const emailOn = document.getElementById('rm-email-toggle').classList.contains('active');
   const alerts  = emailOn ? [...document.querySelectorAll('#rm-alerts .alert-chip.checked input')].map(i=>parseInt(i.value)) : [];
 
+  // Push alerts
+  const pushOn = document.getElementById('rm-push-toggle')?.classList.contains('active');
+  const pushAlerts = pushOn ? [...document.querySelectorAll('#rm-push-alerts .alert-chip.checked input')].map(i=>parseInt(i.value)) : [];
+  const pushTime = document.getElementById('rm-push-time')?.value || '08';
+
   const catVal  = document.getElementById('rm-category').value;
   const category = catVal === 'custom' ? (document.getElementById('rm-custom-cat').value.trim()||'Other') : catVal;
 
@@ -1387,7 +1442,10 @@ async function saveReminder() {
     notify_time: document.getElementById('rm-notify-time').value,
     auto_delete: document.getElementById('rm-autodel-toggle').classList.contains('active'),
     sent_alerts: dateChanged ? [] : (current?.sent_alerts || []),
-    recurrence: recurrence
+    recurrence: recurrence,
+    push_alerts: pushAlerts,
+    push_time: pushTime,
+    sent_push_alerts: dateChanged ? [] : (current?.sent_push_alerts || [])
   };
 
   let error;
@@ -1745,6 +1803,12 @@ async function deleteLog(id) {
 }
 
 // ─── RECURRENCE ───────────────────────────────────────────
+function toggleRmPush(el) {
+  el.classList.toggle('active');
+  const opts = document.getElementById('rm-push-opts');
+  if (opts) opts.style.display = el.classList.contains('active') ? 'block' : 'none';
+}
+
 function toggleRmRecur(el) {
   el.classList.toggle('active');
   const opts = document.getElementById('rm-recur-opts');
